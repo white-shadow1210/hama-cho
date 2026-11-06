@@ -229,7 +229,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
       <div id="hdList"></div>
       <div style="display:flex;gap:8px;margin-top:12px"><button class="btn pri" id="hNewOrder" style="margin:0">📝 注文を受ける</button><button class="btn sub" id="hSell" style="margin:0">🚚 注文なしの販売</button></div>
     </div>
-    <div class="card" id="homeTomorrow"><h2>🌅 明日の注文と仕入れの目安 <small id="htSum"></small></h2><div id="htBody"></div><button class="btn sub" id="hBuy" style="margin-top:10px">🛒 仕入れの画面を開く</button></div>
+    <div class="card" id="homeTomorrow"><h2>🌅 明日の注文と仕入れの目安 <small id="htSum"></small></h2><div id="htBody"></div><div style="display:flex;gap:8px;margin-top:10px"><button class="btn sub" id="hTomorrow" style="margin:0">✏️ 注文を見る・直す</button><button class="btn sub" id="hBuy" style="margin:0">🛒 仕入れへ</button></div></div>
     <div id="unpaidAlert"></div>
     <div class="card"><h2>☀️ 今日 <small id="todayLabel"></small></h2><div class="kpis" id="kToday"></div></div>
     <div class="card"><h2>📅 この月の合計 <small id="monthLabel2"></small></h2><div class="kpis" id="kMonth"></div></div>
@@ -391,6 +391,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
         <button class="btn sub" id="flushNow">未送信を今すぐ送る</button>
         <button class="btn sub" id="reloadNow">最新を読み込む</button>
+        <button class="btn sub hidden" id="openSheetUrl">📊 スプレッドシートを開く</button>
       </div>
       <div id="demoTools" style="margin-top:14px;border-top:1px solid var(--beige2);padding-top:12px">
         <div class="hint" style="margin-top:0">いまはお試しモード（この端末だけに保存）です。</div>
@@ -531,6 +532,7 @@ async function load(){
   try{
     const r = await api('GET', {action:'load', month:S.month, today:todayStr()});
     TABLES.forEach(t => { const o={}; (r[t]||[]).forEach(x => { if(x.id) o[x.id]=x; }); S[t]=o; });
+    if(r.sheetUrl && r.sheetUrl!==cfg.sheet){ cfg.sheet = r.sheetUrl; LS.set(K_CFG, cfg); }
     outbox.forEach(applyOp); persist();
     S.sync = outbox.length ? 'pending' : 'ok'; S.syncErr='';
   }catch(e){ S.sync='err'; S.syncErr = e.name==='AbortError' ? '通信がタイムアウトしました' : (e.message||'通信できません'); }
@@ -553,6 +555,7 @@ function renderSync(){
   else if(S.sync==='err') cs.innerHTML = `<div class="note err">接続できませんでした：${esc(S.syncErr)}<br>電波が弱い場所では、入力は端末に残り、つながったときに自動で送られます（未送信 ${n}件）。</div>`;
   else cs.innerHTML = `<div class="note info">スプレッドシートにつながっています。${n?`未送信 ${n}件`:'すべて保存済み'}</div>`;
   $('#demoTools').classList.toggle('hidden', remote());
+  $('#openSheetUrl').classList.toggle('hidden', !(remote() && cfg.sheet));
 }
 $('#syncPill').onclick = () => goView('more', '#settingsCard');
 
@@ -684,6 +687,7 @@ function renderHomeOrders(t){
 $('#hdList').onclick = e => { const b = e.target.closest('[data-hdeliver]'); if(!b) return; S.sellMode='deliver'; $('#sDate').value=todayStr(); goView('sell'); startDeliver(b.dataset.hdeliver); };
 $('#hNewOrder').onclick = () => { S.sellMode='order'; $('#sDate').value=addDays(todayStr(),1); S.cart=null; goView('sell'); };
 $('#hSell').onclick = () => { S.sellMode='deliver'; $('#sDate').value=todayStr(); S.cart=null; goView('sell'); };
+$('#hTomorrow').onclick = () => { S.sellMode='order'; $('#sDate').value=addDays(todayStr(),1); S.cart=null; goView('sell'); };
 $('#hBuy').onclick = () => { $('#bDate').value=addDays(todayStr(),1); goView('buy'); };
 async function copyText(txt, title){
   try{ await navigator.clipboard.writeText(txt); toast('コピーしました'); }
@@ -728,7 +732,7 @@ function renderPick(){
       : emptyHTML('📝','この日の注文はまだありません。お客さまをタップして入れましょう');
   } else {
     const orders = ordersOf(onDate('sales', d));
-    $('#orderList').innerHTML = orders.length ? orders.map(o => `<div class="li"><div class="ic">🏠</div><div class="m"><div class="t">${esc(o.customerName)}${isCredit(o)?'<span class="tag r">掛け</span>':''}${o.pay==='入金済'?'<span class="tag g">入金済</span>':''}</div><div class="sub">${linesText(o)}</div></div><div class="a">${yen(o.total)}${o.discount?`<small>サービス −${yen(o.discount)}</small>`:''}</div><button class="btn del" data-delorder="${esc(o.id)}">削除</button></div>`).join('')
+    $('#orderList').innerHTML = orders.length ? orders.map(o => `<div class="li"><div class="ic">🏠</div><div class="m"><div class="t">${esc(o.customerName)}${isCredit(o)?'<span class="tag r">掛け</span>':''}${o.pay==='入金済'?'<span class="tag g">入金済</span>':''}</div><div class="sub">${linesText(o)}</div></div><div class="a">${yen(o.total)}${o.discount?`<small>サービス −${yen(o.discount)}</small>`:''}</div><button class="btn sub" data-editsale="${esc(o.id)}" style="padding:8px 10px;font-size:13px">直す</button><button class="btn del" data-delorder="${esc(o.id)}">削除</button></div>`).join('')
       + `<div class="li" style="border-top:2px solid var(--line)"><div class="m"><div class="t">合計 ${orders.length}軒</div></div><div class="a" style="color:var(--navy2);font-size:18px">${yen(sum(orders))}</div></div>`
       : emptyHTML('🚚','この日の販売はまだありません');
     renderDue(d);
@@ -741,16 +745,17 @@ function renderDue(d){
   const done = all.filter(o => st(o)==='配達済');
   $('#dueSum').textContent = all.length ? `残り${todo.length}件 / 全${all.length}件` : '';
   $('#dueList').innerHTML = !all.length ? emptyHTML('📭','この日の注文はありません。前日までに受けた注文は「📝 注文を受ける」から入れられます')
-    : (todo.length ? todo.map(o => `<div class="li"><div class="ic">📦</div><div class="m"><div class="t">${esc(o.customerName)}</div><div class="sub">${esc(area(o))}${area(o)?' ・ ':''}${linesText(o)}</div></div><div class="a">${yen(o.total)}</div><button class="btn pri" data-deliver="${esc(o.id)}" style="margin:0;padding:11px 14px;font-size:14px;width:auto;box-shadow:none">配達する</button></div>`).join('') : emptyHTML('🎉','この日の注文はすべて配達済みです'))
+    : (todo.length ? todo.map(o => `<div class="li"><div class="ic">📦</div><div class="m"><div class="t">${esc(o.customerName)}</div><div class="sub">${esc(area(o))}${area(o)?' ・ ':''}${linesText(o)}</div></div><div class="a">${yen(o.total)}</div><button class="btn pri" data-deliver="${esc(o.id)}" style="margin:0;padding:11px 14px;font-size:14px;width:auto;box-shadow:none">配達する</button></div><div class="li" style="padding-top:0;border-top:0;justify-content:flex-end;gap:8px"><button class="btn sub" data-editorder="${esc(o.id)}" style="padding:7px 12px;font-size:13px;width:auto">✏️ 注文を直す</button><button class="btn del" data-delord="${esc(o.id)}">削除</button></div>`).join('') : emptyHTML('🎉','この日の注文はすべて配達済みです'))
     + (done.length ? `<div class="hint">配達済 ${done.length}件：${done.map(o=>esc(o.customerName)).join('、')}</div>` : '');
 }
-$('#dueList').onclick = e => { const b = e.target.closest('[data-deliver]'); if(b) startDeliver(b.dataset.deliver); };
+$('#dueList').onclick = e => { const b = e.target.closest('[data-deliver]'); if(b){ startDeliver(b.dataset.deliver); return; } $('#orderList').onclick(e); };
 $('#cGrid').onclick = e => {
   if(e.target.closest('#pickNew')) { openCustomer(null, id => startCart(id)); return; }
   const b = e.target.closest('[data-pick]'); if(b) startCart(b.dataset.pick);
 };
 $('#orderList').onclick = e => {
   const ed = e.target.closest('[data-editorder]'); if(ed){ startEditOrder(ed.dataset.editorder); return; }
+  const es = e.target.closest('[data-editsale]'); if(es){ startEditSale(es.dataset.editsale); return; }
   const d2 = e.target.closest('[data-delord]');
   if(d2){ const rows = arr('orders').filter(r => r.orderId===d2.dataset.delord);
     confirmSheet(`${esc(san(rows[0]?.customerName||''))}の注文を削除しますか？`, `${rows.length}品・${yen(sum(rows))}`, () => { commit(rows.map(l=>del('orders', l.id))); toast('削除しました'); }); return; }
@@ -773,6 +778,13 @@ function startDeliver(orderId){
   const rows = arr('orders').filter(r => r.orderId===orderId); if(!rows.length) return;
   S.cart = {customerId:rows[0].customerId, kind:'sale', fromOrder:orderId, lines:linesFromRows(rows), pay:'現金', note:rows[0].note||''};
   resetCartUI(); $('#cartNote').value = S.cart.note;
+}
+function startEditSale(orderId){
+  const rows = arr('sales').filter(r => (r.orderId||r.id)===orderId); if(!rows.length) return;
+  $('#sDate').value = rows[0].date;
+  S.cart = {customerId:rows[0].customerId, kind:'sale', editing:orderId, editIds:rows.map(r=>r.id), lines:linesFromRows(rows), pay:rows[0].pay==='入金済'?'現金':(rows[0].pay||'現金'), note:rows[0].note||''};
+  resetCartUI(); $('#cartNote').value = S.cart.note;
+  $$('#payBox .paybtn').forEach(x=>x.classList.toggle('on', x.dataset.pay===S.cart.pay));
 }
 function startEditOrder(orderId){
   const rows = arr('orders').filter(r => r.orderId===orderId); if(!rows.length) return;
@@ -861,7 +873,7 @@ $('#cartConfirm').onclick = () => {
   const bad = lines.find(x => !x.k.qty); if(bad){ toast(`${esc(bad.it.name)} の数量を入れてください`); return; }
   const noPrice = lines.find(x => !x.k.lp && x.l.mode!=='おまけ' && x.l.mode!=='単価変更');
   const tot = lines.reduce((s,x)=>s+x.k.total,0), disc = lines.reduce((s,x)=>s+x.k.discount,0);
-  openSheet(`<h3>${isOrder?'この注文を受けますか？':'この内容で登録しますか？'}</h3>
+  openSheet(`<h3>${isOrder?(cart.editing?'注文をこの内容に直しますか？':'この注文を受けますか？'):(cart.editing?'この内容に直しますか？':'この内容で登録しますか？')}</h3>
     <div class="conf-cust">${esc(san(c.name))}</div><div class="conf-meta">${isOrder?'配達日 ':''}${md(d)}${isOrder&&w?'（'+w+'）':''} ・ ${esc(c.area||'')}</div>
     ${lines.map(x=>`<div class="conf-line"><div>${icon(x.it)} ${esc(x.it.name)}<div class="q">${fmtQ(x.k.qty)}${esc(x.it.unit||'')} × ${yen(x.k.unit)}${x.l.mode!=='いつも'?` <span class="tag o">${esc(x.l.mode)}</span>`:''}</div></div><div class="p">${yen(x.k.total)}${x.k.discount?`<small>−${yen(x.k.discount)}</small>`:''}</div></div>`).join('')}
     ${noPrice?`<div class="note" style="margin-top:10px">⚠️ ${esc(noPrice.it.name)} の単価が0円です。よろしいですか？</div>`:''}
@@ -876,8 +888,8 @@ $('#cartConfirm').onclick = () => {
       const orderId = cart.editing || 'r'+uid();
       ops = (cart.editIds||[]).map(id => del('orders', id)).concat(lines.map((x,i) => up('orders', uid(), {...base(x,i), orderId, status:'受付'})));
     } else {
-      const orderId = 'o'+uid();
-      ops = lines.map((x,i) => up('sales', uid(), {...base(x,i), orderId, pay:cart.pay, paidDate: cart.pay==='現金'?d:''}));
+      const orderId = cart.editing || 'o'+uid();
+      ops = (cart.editIds||[]).map(id => del('sales', id)).concat(lines.map((x,i) => up('sales', uid(), {...base(x,i), orderId, pay:cart.pay, paidDate: cart.pay==='現金'?d:''})));
       if(cart.fromOrder) arr('orders').filter(r => r.orderId===cart.fromOrder).forEach(r => ops.push(up('orders', r.id, {...r, status:'配達済', saleOrderId:orderId})));
     }
     lines.forEach(x => { if(!num(x.it.price) && x.k.lp) ops.push(up('items', x.it.id, {...x.it, price:x.k.lp})); });
@@ -1208,6 +1220,7 @@ $('#cfgSave').onclick = async () => {
   } else load();
 };
 $('#flushNow').onclick = () => { if(!outbox.length) return toast('未送信はありません'); flush(); };
+$('#openSheetUrl').onclick = () => { if(cfg.sheet) window.open(cfg.sheet, '_blank'); };
 $('#reloadNow').onclick = () => remote() ? load() : toast('お試しモードです');
 $('#clearLocal').onclick = () => confirmSheet('この端末のデータをすべて消しますか？','お試しモードのデータが消えます。元に戻せません。', () => { TABLES.forEach(t=>S[t]={}); persist(); renderAll(); toast('消しました'); });
 $('#seedDemo').onclick = () => { seed(); toast('お試しデータを入れました'); goView('home'); };

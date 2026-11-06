@@ -142,6 +142,7 @@ function load(month, today) {
   const inRange = function (r) { const m = String(r.date || '').slice(0, 7); return m === month || m === prev; };
   return {
     ok: true,
+    sheetUrl: SpreadsheetApp.getActive().getUrl(),
     items: readAll('items'),
     customers: readAll('customers'),
     purchases: readAll('purchases').filter(inRange),
