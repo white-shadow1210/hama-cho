@@ -304,15 +304,19 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
       <div class="card">
         <h2>🛒 仕入れを入力</h2>
         <label class="f">日付</label><input type="date" id="bDate">
+        <label class="f">仕入先</label>
+        <div class="seg" id="bBase"><button data-base="静岡市">静岡市</button><button data-base="焼津市">焼津市</button></div>
+        <div class="chips" id="bSupp"></div>
         <label class="f">品目</label><select id="bItem"></select>
         <div class="grid3">
           <div><label class="f">数量</label><input type="number" inputmode="decimal" id="bQty" placeholder="0"></div>
           <div><label class="f">単位</label><select id="bUnit"></select></div>
-          <div><label class="f">単価（円）</label><input type="number" inputmode="numeric" id="bCost" placeholder="0"></div>
+          <div><label class="f">単価（税抜・円）</label><input type="number" inputmode="numeric" id="bCost" placeholder="0"></div>
         </div>
+        <label class="f">消費税</label><select id="bTax"><option value="8">8%（ふつう）</option><option value="10">10%（例外）</option></select>
         <div class="chips" id="bQuick" style="margin-top:8px"></div>
         <label class="f">メモ（任意）</label><input id="bNote" placeholder="例：〇〇市場・せり">
-        <div class="total"><span>仕入れ金額</span><b id="bTotal">¥0</b></div>
+        <div class="total"><span>仕入れ金額（税抜）<br><small id="bTotalInc" style="color:var(--mute)"></small></span><b id="bTotal">¥0</b></div>
         <button class="btn pri" id="bSave">仕入れを記録する</button>
       </div>
       <div class="card"><h2>📋 この日の仕入れ <small id="bDayLabel"></small></h2><div class="list" id="bList"></div></div>
@@ -424,6 +428,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
   </section>
 </main>
 
+<div class="bar hidden" id="buyBar"><button class="btn sub" id="bbPrev" style="width:auto;margin:0;padding:10px 12px;font-size:14px">‹ 前日</button><div class="tt" style="flex:1;text-align:center"><small id="bbDate"></small><b id="bbTotal"></b></div><button class="btn sub" id="bbNext" style="width:auto;margin:0;padding:10px 12px;font-size:14px">翌日 ›</button></div>
 <div class="bar hidden" id="cartBar"><div class="tt"><small id="barCount">0品</small><b id="barTotal">¥0</b></div><button class="btn pri" id="cartConfirm">確認する</button></div>
 
 <nav>
@@ -486,7 +491,7 @@ const STARTER = [
  ['イカフライ','惣菜・珍味','パック',1000,'',''],['ひとくちイカフライ','惣菜・珍味','パック',700,'',''],
  ['はんぺん','惣菜・珍味','パック',500,'',''],['おでん具','惣菜・珍味','パック',1000,'','']
 ];
-const TABLES = ['items','customers','purchases','processes','sales','orders','closings'];
+const TABLES = ['items','customers','purchases','processes','sales','orders','closings','suppliers'];
 
 document.title = APP_NAME; $('#appName').textContent = '🐟 ' + APP_NAME;
 function toast(msg, ms=2000){ const t=$('#toast'); t.innerHTML=msg; t.classList.add('on'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('on'),ms); }
@@ -499,7 +504,7 @@ const LS = {
 const K_CFG='sakana-cfg-v2', K_DATA='sakana-data-v2', K_OUT='sakana-outbox-v2';
 
 /* ---------- state ---------- */
-const S = { items:{}, customers:{}, purchases:{}, processes:{}, sales:{}, orders:{}, closings:{}, closeDate:'', sellMode:'deliver',
+const S = { items:{}, customers:{}, purchases:{}, processes:{}, sales:{}, orders:{}, closings:{}, suppliers:{}, bBase:'', bSupp:'', closeDate:'', sellMode:'deliver',
   month: todayStr().slice(0,7), view:'home', buyTab:'buy', reconP:'day',
   cart:null, sync:'demo', syncErr:'' };
 let cfg = LS.get(K_CFG, {url:'', key:''});
@@ -909,8 +914,10 @@ function renderCart(){
   updateBar();
 }
 function updateBar(){
-  const on = S.view==='sell' && !!S.cart;
-  $('#cartBar').classList.toggle('hidden', !on); document.body.classList.toggle('has-bar', on);
+  const on = S.view==='sell' && !!S.cart, onBuy = S.view==='buy' && S.buyTab==='buy';
+  $('#buyBar').classList.toggle('hidden', !onBuy);
+  if(onBuy){ const d = $('#bDate').value || todayStr(), rows = onDate('purchases', d); $('#bbDate').textContent = `${dayLabel(d)} の仕入れ合計 ${rows.length}品`; $('#bbTotal').innerHTML = `${yen(sum(rows))} <small style="font-weight:400;color:var(--mute)">（税込 ${yen(sum(rows.map(r=>({total:incOf(r)}))))}）</small>`; }
+  $('#cartBar').classList.toggle('hidden', !on); document.body.classList.toggle('has-bar', on || onBuy);
   if(!on) return;
   const tot = S.cart.lines.reduce((s,l)=>s+lineCalc(l).total, 0);
   $('#barTotal').textContent = yen(tot); $('#barCount').textContent = `${S.cart.lines.length}品 ・ ${S.cart.kind==='order'?'注文':S.cart.pay}`;
@@ -987,7 +994,8 @@ function renderBuy(){
   fillSel($('#bItem'), itemOptions(true));
   const d = $('#bDate').value || todayStr(); $('#bDayLabel').textContent = md(d);
   const rows = onDate('purchases', d).sort((a,b)=>num(b.ts)-num(a.ts));
-  $('#bList').innerHTML = rows.length ? rows.map(r=>`<div class="li"><div class="ic">${icon(S.items[r.itemId])}</div><div class="m"><div class="t">${esc(r.itemName)}</div><div class="sub">${fmtQ(r.qty)}${esc(r.unit)} × ${yen(r.unitCost)}${r.note?' ・'+esc(r.note):''}</div></div><div class="a">${yen(r.total)}</div><button class="btn del" data-del="purchases:${esc(r.id)}">削除</button></div>`).join('') + `<div class="li" style="border-top:2px solid var(--line)"><div class="m"><div class="t">合計</div></div><div class="a" style="color:var(--orange)">${yen(sum(rows))}</div></div>` : emptyHTML('🛒','この日の仕入れはまだありません');
+  $('#bList').innerHTML = rows.length ? rows.map(r=>`<div class="li"><div class="ic">${icon(S.items[r.itemId])}</div><div class="m"><div class="t">${esc(r.itemName)}</div><div class="sub">${r.supplierName?esc(r.base?r.base+'・':'')+esc(r.supplierName)+' ・ ':''}${fmtQ(r.qty)}${esc(r.unit)} × ${yen(r.unitCost)}${num(r.taxRate)===10?' <span class="tag o">税10%</span>':''}${r.note?' ・'+esc(r.note):''}</div></div><div class="a">${yen(r.total)}<small>税込 ${yen(incOf(r))}</small></div><button class="btn sub" data-editbuy="${esc(r.id)}" style="padding:8px 10px;font-size:13px">直す</button><button class="btn del" data-del="purchases:${esc(r.id)}">削除</button></div>`).join('') + `<div class="li" style="border-top:2px solid var(--line)"><div class="m"><div class="t">合計</div></div><div class="a" style="color:var(--orange)">${yen(sum(rows))}<small>税込 ${yen(sum(rows.map(r=>({total:incOf(r)}))))}</small></div></div>` : emptyHTML('🛒','この日の仕入れはまだありません');
+  renderSupp();
   calcBuy();
 }
 function onBuyItem(){
@@ -999,16 +1007,80 @@ function onBuyItem(){
 }
 $('#bItem').onchange = onBuyItem;
 $('#bQuick').onclick = e => { const b=e.target.closest('[data-fill]'); if(b){ $('#bCost').value=b.dataset.fill; calcBuy(); } };
-function calcBuy(){ $('#bTotal').textContent = yen(num($('#bQty').value)*num($('#bCost').value)); }
+const incOf = r => num(r.totalInc) || Math.round(num(r.total)*(1+(num(r.taxRate)||8)/100));
+function calcBuy(){ const t = Math.round(num($('#bQty').value)*num($('#bCost').value)), r = num($('#bTax').value)||8; $('#bTotal').textContent = yen(t); $('#bTotalInc').textContent = t ? `税込 ${yen(Math.round(t*(1+r/100)))}（${r}%）` : ''; }
+$('#bTax').onchange = calcBuy;
+$('#bbPrev').onclick = () => { $('#bDate').value = addDays($('#bDate').value||todayStr(), -1); syncDateMonth($('#bDate').value); renderAll(); };
+$('#bbNext').onclick = () => { $('#bDate').value = addDays($('#bDate').value||todayStr(), 1); syncDateMonth($('#bDate').value); renderAll(); };
+/* 仕入先（拠点ごとに固定表示） */
+const suppArr = () => arr('suppliers').sort((a,b)=>String(a.name).localeCompare(String(b.name),'ja'));
+S.bBase = LS.get('sakana-bbase','静岡市'); S.bSupp = LS.get('sakana-bsupp','');
+function renderSupp(){
+  $$('#bBase button').forEach(b => b.classList.toggle('on', b.dataset.base===S.bBase));
+  const list = suppArr().filter(x => x.base===S.bBase);
+  $('#bSupp').innerHTML = list.map(x=>`<button class="chip ${x.id===S.bSupp?'on':''}" data-supp="${esc(x.id)}">${esc(x.name)}</button>`).join('') + `<button class="chip" data-suppnew="1">＋ 仕入先を追加</button>` + (suppArr().length ? `<button class="chip" data-suppedit="1">✏️ 編集</button>` : '');
+}
+$('#bBase').onclick = e => { const b = e.target.closest('[data-base]'); if(!b) return; S.bBase = b.dataset.base; S.bSupp=''; LS.set('sakana-bbase',S.bBase); LS.set('sakana-bsupp',''); renderSupp(); };
+$('#bSupp').onclick = e => {
+  const c = e.target.closest('[data-supp]'); if(c){ S.bSupp = S.bSupp===c.dataset.supp ? '' : c.dataset.supp; LS.set('sakana-bsupp',S.bSupp); renderSupp(); return; }
+  if(e.target.closest('[data-suppnew]')) openSupplier(null, id => { S.bSupp=id; LS.set('sakana-bsupp',id); renderSupp(); });
+  if(e.target.closest('[data-suppedit]')) manageSuppliers();
+};
+function openSupplier(id, after){
+  const x = id ? S.suppliers[id] : {name:'', base:S.bBase};
+  let base = x.base || '静岡市';
+  openSheet(`<h3>${id?'仕入先の編集':'仕入先を追加'}</h3>
+    <label class="f">拠点</label><div class="seg" id="spBase"><button data-sb="静岡市">静岡市</button><button data-sb="焼津市">焼津市</button></div>
+    <label class="f">仕入先の名前</label><input id="spName" value="${esc(x.name)}" placeholder="例：〇〇水産" autocomplete="off">
+    <div class="acts">${id?`<button class="btn red" id="spDel" style="flex:.7">削除</button>`:`<button class="btn gray" data-close style="flex:.7">やめる</button>`}<button class="btn pri big" id="spOk">保存</button></div>`);
+  const paint = () => $$('#spBase button').forEach(b => b.classList.toggle('on', b.dataset.sb===base)); paint();
+  $('#spBase').onclick = e => { const b = e.target.closest('[data-sb]'); if(b){ base=b.dataset.sb; paint(); } };
+  $('#spOk').onclick = () => { const name = $('#spName').value.trim(); if(!name) return toast('名前を入れてください');
+    const sid = id || 's'+uid(); closeSheet();
+    const ops = [up('suppliers', sid, {name, base})];
+    if(id) arr('purchases').filter(p=>p.supplierId===id && (p.supplierName!==name||p.base!==base)).forEach(p => ops.push(up('purchases', p.id, {...p, supplierName:name, base})));
+    if(!id) S.bBase = base; LS.set('sakana-bbase', S.bBase);
+    commit(ops); if(after) after(sid); toast('仕入先を保存しました'); };
+  if($('#spDel')) $('#spDel').onclick = () => confirmSheet(`${esc(x.name)} を削除しますか？`, '過去の仕入れの記録は、仕入先の名前つきで残ります。', () => { commit([del('suppliers', id)]); if(S.bSupp===id){ S.bSupp=''; LS.set('sakana-bsupp',''); } toast('削除しました'); });
+}
+function manageSuppliers(){
+  const g = b => suppArr().filter(x=>x.base===b).map(x=>`<div class="li"><div class="m"><div class="t">${esc(x.name)}</div></div><button class="btn sub" data-spe="${esc(x.id)}" style="padding:8px 14px;font-size:13px;width:auto;margin:0">✏️ 編集</button></div>`).join('') || '<div class="hint">まだありません</div>';
+  openSheet(`<h3>仕入先の編集</h3><h4 style="margin:10px 0 2px">静岡市</h4>${g('静岡市')}<h4 style="margin:14px 0 2px">焼津市</h4>${g('焼津市')}<div class="acts"><button class="btn gray" data-close>閉じる</button></div>`);
+  $$('#sheet [data-spe]').forEach(b => b.onclick = () => openSupplier(b.dataset.spe));
+}
+/* 仕入れの修正 */
+$('#bList').addEventListener('click', e => { const b = e.target.closest('[data-editbuy]'); if(b) openPurchase(b.dataset.editbuy); });
+function openPurchase(id){
+  const r = S.purchases[id]; if(!r) return;
+  guardClosed(r.date, () => {
+    openSheet(`<h3>仕入れの修正</h3>
+      <label class="f">日付</label><input type="date" id="epDate" value="${esc(r.date)}">
+      <label class="f">仕入先</label><select id="epSupp"><option value="">指定なし</option>${['静岡市','焼津市'].map(bs=>`<optgroup label="${bs}">${suppArr().filter(x=>x.base===bs).map(x=>`<option value="${esc(x.id)}" ${x.id===r.supplierId?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup>`).join('')}</select>
+      <label class="f">品目</label><select id="epItem">${itemOptions(false)}</select>
+      <div class="grid3"><div><label class="f">数量</label><input type="number" inputmode="decimal" id="epQty" value="${esc(r.qty)}"></div><div><label class="f">単位</label><select id="epUnit">${UNITS.map(u=>`<option ${u===r.unit?'selected':''}>${u}</option>`).join('')}</select></div><div><label class="f">単価（税抜）</label><input type="number" inputmode="numeric" id="epCost" value="${esc(r.unitCost)}"></div></div>
+      <label class="f">消費税</label><select id="epTax"><option value="8" ${num(r.taxRate)!==10?'selected':''}>8%（ふつう）</option><option value="10" ${num(r.taxRate)===10?'selected':''}>10%（例外）</option></select>
+      <label class="f">メモ</label><input id="epNote" value="${esc(r.note||'')}">
+      <div class="acts"><button class="btn red" id="epDel" style="flex:.7">削除</button><button class="btn pri big" id="epOk">保存</button></div>`);
+    $('#epItem').value = r.itemId;
+    $('#epOk').onclick = () => {
+      const it = S.items[$('#epItem').value], qty = num($('#epQty').value), cost = num($('#epCost').value), d = $('#epDate').value || r.date, rate = num($('#epTax').value)||8, sp = S.suppliers[$('#epSupp').value];
+      if(!it) return toast('品目を選んでください'); if(!qty) return toast('数量を入れてください');
+      const total = Math.round(qty*cost);
+      closeSheet(); commit([up('purchases', id, {...r, date:d, dow:dowOf(d), itemId:it.id, itemName:it.name, qty, unit:$('#epUnit').value, unitCost:cost, total, taxRate:rate, totalInc:Math.round(total*(1+rate/100)), supplierId:sp?sp.id:'', supplierName:sp?sp.name:'', base:sp?sp.base:'', note:$('#epNote').value.trim()})]); toast('直しました');
+    };
+    $('#epDel').onclick = () => confirmSheet('この仕入れを削除しますか？', `${esc(r.itemName)} ${fmtQ(r.qty)}${esc(r.unit)}・${yen(r.total)}`, () => { commit([del('purchases', id)]); toast('削除しました'); });
+  });
+}
 ['#bQty','#bCost'].forEach(s=>$(s).oninput=calcBuy);
 $('#bDate').onchange = () => { syncDateMonth($('#bDate').value); renderAll(); };
 $('#bSave').onclick = () => {
   const id=$('#bItem').value, it=S.items[id], qty=num($('#bQty').value), cost=num($('#bCost').value), d=$('#bDate').value||todayStr();
   if(!it) return toast('品目を選んでください'); if(!qty) return toast('数量を入れてください');
   const unit = $('#bUnit').value;
-  const ops = [up('purchases', uid(), {date:d, dow:dowOf(d), itemId:id, itemName:it.name, qty, unit, unitCost:cost, total:Math.round(qty*cost), note:$('#bNote').value.trim(), ts:Date.now()})];
+  const rate = num($('#bTax').value)||8, total = Math.round(qty*cost), sp = S.suppliers[S.bSupp];
+  const ops = [up('purchases', uid(), {date:d, dow:dowOf(d), itemId:id, itemName:it.name, qty, unit, unitCost:cost, total, taxRate:rate, totalInc:Math.round(total*(1+rate/100)), supplierId:sp?sp.id:'', supplierName:sp?sp.name:'', base:sp?sp.base:S.bBase, note:$('#bNote').value.trim(), ts:Date.now()})];
   if(cost && (!it.lastCostDate || d >= it.lastCostDate)) ops.push(up('items', id, {...it, lastCost:cost, lastCostDate:d}));
-  commit(ops); $('#bQty').value=''; $('#bCost').value=''; $('#bNote').value=''; $('#bQuick').innerHTML=''; calcBuy();
+  commit(ops); $('#bTax').value='8'; $('#bQty').value=''; $('#bCost').value=''; $('#bNote').value=''; $('#bQuick').innerHTML=''; calcBuy();
   toast(`${esc(it.name)} ${fmtQ(qty)}${esc(unit)} を記録しました`);
 };
 
@@ -1257,7 +1329,7 @@ const toCSV = (head, rows) => '﻿' + [head, ...rows].map(r=>r.map(csvCell).join
 function buildExport(kind){
   const byDate = (a,b) => String(a.date).localeCompare(String(b.date)) || num(a.ts)-num(b.ts);
   if(kind==='sales') return {name:`販売_${S.month}.csv`, csv: toCSV(['日付','曜日','お客さま','地域','品目','数量','単位','いつもの単価','販売単価','販売金額','値引き額','売り方','支払い','入金日','メモ'], inMonth('sales').sort(byDate).map(x=>[x.date,x.dow||dowOf(x.date),x.customerName,x.area,x.itemName,x.qty,x.unit,x.listPrice,x.unitPrice,x.total,x.discount,x.mode,x.pay,x.paidDate,x.note]))};
-  if(kind==='purchases') return {name:`仕入れ_${S.month}.csv`, csv: toCSV(['日付','曜日','品目','数量','単位','仕入単価','仕入金額','メモ'], inMonth('purchases').sort(byDate).map(x=>[x.date,x.dow||dowOf(x.date),x.itemName,x.qty,x.unit,x.unitCost,x.total,x.note]))};
+  if(kind==='purchases') return {name:`仕入れ_${S.month}.csv`, csv: toCSV(['日付','曜日','拠点','仕入先','品目','数量','単位','仕入単価(税抜)','仕入金額(税抜)','税率','税込金額','メモ'], inMonth('purchases').sort(byDate).map(x=>[x.date,x.dow||dowOf(x.date),x.base,x.supplierName,x.itemName,x.qty,x.unit,x.unitCost,x.total,(num(x.taxRate)||8)+'%',incOf(x),x.note]))};
   if(kind==='processes') return {name:`加工_${S.month}.csv`, csv: toCSV(['日付','原料','使った量','単位','できあがり','できた数','単位','メモ'], inMonth('processes').sort(byDate).map(x=>[x.date,x.fromItemName,x.fromQty,x.fromUnit,x.toItemName,x.toQty,x.toUnit,x.note]))};
   if(kind==='customers') return {name:'お客さま一覧.csv', csv: toCSV(['お名前','連絡先','地域','取引開始日'], custArr().map(c=>[c.name,c.phone,c.area,c.since]))};
   return {name:'品目リスト.csv', csv: toCSV(['品目名','種類','単位','販売単価','前回仕入単価','扱い中'], itemsArr().map(i=>[i.name,i.cat,i.unit,i.price,i.lastCost||'',i.active===false?'休止':'扱い中']))};

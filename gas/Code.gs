@@ -26,7 +26,10 @@ const SCHEMA = {
     ['id','ID','t'],['name','お名前','t'],['phone','連絡先','t'],['area','地域','t'],['since','取引開始日','t'] ]},
   purchases: { sheet: '仕入れ', cols: [
     ['id','ID','t'],['date','日付','t'],['dow','曜日','t'],['itemId','品目ID','t'],['itemName','品目','t'],
-    ['qty','数量','n'],['unit','単位','t'],['unitCost','仕入単価','n'],['total','仕入金額','n'],['note','メモ','t'],['ts','登録時刻','n'] ]},
+    ['qty','数量','n'],['unit','単位','t'],['unitCost','仕入単価(税抜)','n'],['total','仕入金額(税抜)','n'],['note','メモ','t'],['ts','登録時刻','n'],
+    ['supplierId','仕入先ID','t'],['supplierName','仕入先','t'],['base','拠点','t'],['taxRate','税率(%)','n'],['totalInc','税込金額','n'] ]},
+  suppliers: { sheet: '仕入先', cols: [
+    ['id','ID','t'],['name','仕入先','t'],['base','拠点','t'] ]},
   processes: { sheet: '加工', cols: [
     ['id','ID','t'],['batchId','加工ID','t'],['date','日付','t'],['fromItemId','原料ID','t'],['fromItemName','原料','t'],
     ['fromQty','使った量','n'],['fromUnit','原料の単位','t'],['toItemId','商品ID','t'],['toItemName','できあがり','t'],
@@ -152,6 +155,7 @@ function load(month, today) {
     processes: readAll('processes').filter(inRange),
     sales: readAll('sales').filter(function (r) { return inRange(r) || String(r.date) >= since || r.pay === '掛け'; }),
     closings: readAll('closings'),
+    suppliers: readAll('suppliers'),
     orders: readAll('orders').filter(function (r) { return r.status !== '配達済' || String(r.date) >= since; })
   };
 }
