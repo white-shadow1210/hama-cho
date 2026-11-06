@@ -36,6 +36,9 @@ const SCHEMA = {
     ['customerName','お客さま','t'],['area','地域','t'],['itemId','品目ID','t'],['itemName','品目','t'],['qty','数量','n'],
     ['unit','単位','t'],['listPrice','いつもの単価','n'],['unitPrice','販売単価','n'],['total','販売金額','n'],
     ['discount','値引き額','n'],['mode','売り方','t'],['pay','支払い','t'],['paidDate','入金日','t'],['note','メモ','t'],['ts','登録時刻','n'] ]},
+  closings: { sheet: '締め', cols: [
+    ['id','ID','t'],['date','日付','t'],['closedAt','締めた時刻','t'],['sales','売上合計','n'],['cost','仕入れ合計','n'],
+    ['profit','差額','n'],['customers','お客さま数','n'],['pending','未配達の注文','n'] ]},
   orders: { sheet: '注文', cols: [
     ['id','ID','t'],['orderId','注文ID','t'],['date','配達日','t'],['dow','曜日','t'],['customerId','顧客ID','t'],
     ['customerName','お客さま','t'],['area','地域','t'],['itemId','品目ID','t'],['itemName','品目','t'],['qty','数量','n'],
@@ -148,6 +151,7 @@ function load(month, today) {
     purchases: readAll('purchases').filter(inRange),
     processes: readAll('processes').filter(inRange),
     sales: readAll('sales').filter(function (r) { return inRange(r) || String(r.date) >= since || r.pay === '掛け'; }),
+    closings: readAll('closings'),
     orders: readAll('orders').filter(function (r) { return r.status !== '配達済' || String(r.date) >= since; })
   };
 }
