@@ -28,6 +28,8 @@ const SCHEMA = {
     ['id','ID','t'],['date','日付','t'],['dow','曜日','t'],['itemId','品目ID','t'],['itemName','品目','t'],
     ['qty','数量','n'],['unit','単位','t'],['unitCost','仕入単価(税抜)','n'],['total','仕入金額(税抜)','n'],['note','メモ','t'],['ts','登録時刻','n'],
     ['supplierId','仕入先ID','t'],['supplierName','仕入先','t'],['base','拠点','t'],['taxRate','税率(%)','n'],['totalInc','税込金額','n'] ]},
+  stocks: { sheet: '在庫の数', cols: [
+    ['id','ID','t'],['date','数えた日','t'],['itemId','品目ID','t'],['itemName','品目','t'],['unit','単位','t'],['qty','実際の数','n'],['note','メモ','t'],['ts','登録時刻','n'] ]},
   suppliers: { sheet: '仕入先', cols: [
     ['id','ID','t'],['name','仕入先','t'],['base','拠点','t'] ]},
   processes: { sheet: '加工', cols: [
@@ -152,7 +154,8 @@ function load(month, today) {
     items: readAll('items'),
     customers: readAll('customers'),
     purchases: readAll('purchases').filter(inRange),
-    processes: readAll('processes').filter(inRange),
+    processes: readAll('processes').filter(function (r) { return inRange(r) || String(r.date) >= since; }),
+    stocks: readAll('stocks'),
     sales: readAll('sales').filter(function (r) { return inRange(r) || String(r.date) >= since || r.pay === '掛け'; }),
     closings: readAll('closings'),
     suppliers: readAll('suppliers'),
