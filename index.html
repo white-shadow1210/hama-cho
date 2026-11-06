@@ -382,7 +382,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
       <h2>⚙️ 接続の設定</h2>
       <div id="connState"></div>
       <label class="f">スプレッドシート（Apps Script）のURL</label><input id="cfgUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
-      <label class="f">合言葉</label><input id="cfgKey" type="password" placeholder="家族で決めた合言葉" autocomplete="off">
+      <label class="f">合言葉</label><input id="cfgKey" type="text" placeholder="家族で決めた合言葉" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
       <button class="btn pri" id="cfgSave">保存して接続を確認</button>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
         <button class="btn sub" id="flushNow">未送信を今すぐ送る</button>
@@ -1257,11 +1257,23 @@ function renderAll(){
 
 /* ---------- boot ---------- */
 renderSync(); renderAll();
-if(remote()) load();
-else if(cfg.url && !cfg.key){
-  openSheet(`<h3>合言葉を入れてください</h3><div class="hint" style="font-size:14px">はじめて使う端末です。家族で決めた合言葉を入れると、スプレッドシートにつながります。</div><input id="firstKey" type="password" style="margin-top:10px" placeholder="合言葉"><div class="acts"><button class="btn gray" data-close>あとで</button><button class="btn pri" id="firstOk">つなぐ</button></div>`);
-  $('#firstOk').onclick = () => { cfg.key = $('#firstKey').value.trim(); LS.set(K_CFG, cfg); closeSheet(); load(); };
+try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
+function askKey(msg){
+  openSheet(`<h3>合言葉を入れてください</h3><div class="hint" style="font-size:14px">${msg||'この端末ではじめてのときだけ入れます。入れた合言葉は、この端末に保存されて、次からは聞かれません。'}</div><input id="firstKey" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="margin-top:10px" placeholder="合言葉（入力した文字が見えます）"><div id="firstErr" class="hint" style="color:var(--red)"></div><div class="acts"><button class="btn gray" data-close>あとで</button><button class="btn pri" id="firstOk">つなぐ</button></div>`);
+  $('#firstOk').onclick = async () => {
+    const k = $('#firstKey').value.trim(); if(!k){ $('#firstErr').textContent='合言葉を入れてください'; return; }
+    cfg.key = k;
+    try{ await api('GET', {action:'ping'}); LS.set(K_CFG, cfg); closeSheet(); toast('✅ つながりました'); load(); }
+    catch(e){ cfg.key=''; $('#firstErr').textContent = (e.message||'つながりません') + '。もう一度入れてください'; }
+  };
 }
+const _load = load;
+load = async function(){
+  await _load();
+  if(S.syncErr==='合言葉がちがいます'){ cfg.key=''; LS.set(K_CFG, cfg); renderSync(); askKey('合言葉が合いませんでした。もう一度入れてください。'); }
+};
+if(remote()) load();
+else if(cfg.url && !cfg.key) askKey();
 })();
 </script>
 </body>
