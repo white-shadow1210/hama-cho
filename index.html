@@ -224,7 +224,12 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
 
   <!-- ===== HOME ===== -->
   <section id="v-home">
-    <div id="orderAlert"></div>
+    <div class="card" id="homeOrders">
+      <h2>📦 今日の配達 <small id="hdSum"></small></h2>
+      <div id="hdList"></div>
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn pri" id="hNewOrder" style="margin:0">📝 注文を受ける</button><button class="btn sub" id="hSell" style="margin:0">🚚 注文なしの販売</button></div>
+    </div>
+    <div class="card" id="homeTomorrow"><h2>🌅 明日の注文と仕入れの目安 <small id="htSum"></small></h2><div id="htBody"></div><button class="btn sub" id="hBuy" style="margin-top:10px">🛒 仕入れの画面を開く</button></div>
     <div id="unpaidAlert"></div>
     <div class="card"><h2>☀️ 今日 <small id="todayLabel"></small></h2><div class="kpis" id="kToday"></div></div>
     <div class="card"><h2>📅 この月の合計 <small id="monthLabel2"></small></h2><div class="kpis" id="kMonth"></div></div>
@@ -242,7 +247,6 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
     <div class="card"><h2>🤝 お得意さま <small>売上順</small></h2><div class="rank" id="rankCustomers"></div></div>
     <div class="card"><h2>🌱 新しいお客さま</h2><div id="newCustPicto"></div><div class="growth" id="growth" style="margin-top:12px"></div></div>
     <div class="card"><h2>🎁 値引き・おまけの合計</h2><div id="discountBox"></div></div>
-    <div class="card"><h2>📣 インスタ・PRのネタ帳 <small>先月とくらべて</small></h2><div class="pr" id="prBox"></div></div>
   </section>
 
   <!-- ===== SELL ===== -->
@@ -608,9 +612,7 @@ function renderHome(){
   const unpaid = ordersOf(arr('sales').filter(isCredit));
   $('#unpaidAlert').innerHTML = unpaid.length ? `<div class="note err" style="cursor:pointer" id="goUnpaid">📒 未入金（掛け）が <b>${unpaid.length}件・${yen(sum(unpaid))}</b> あります。<u>一覧を見る</u></div>` : '';
   const gu = $('#goUnpaid'); if(gu) gu.onclick = () => goView('more');
-  const tdue = ordersOf(onDate('orders', t)).filter(o=>o.lines[0].status!=='配達済'), tm = ordersOf(onDate('orders', addDays(t,1)));
-  $('#orderAlert').innerHTML = (tdue.length||tm.length) ? `<div class="note info" style="cursor:pointer" id="goOrders">📦 ${tdue.length?`今日の配達 残り <b>${tdue.length}件</b>`:'今日の配達はありません'}${tm.length?` ／ 明日の注文 <b>${tm.length}件・${yen(sum(tm))}</b>`:''}　<u>開く</u></div>` : '';
-  const go = $('#goOrders'); if(go) go.onclick = () => { S.sellMode='deliver'; $('#sDate').value=todayStr(); goView('sell'); };
+  renderHomeOrders(t);
   // today
   const ts = onDate('sales', t), tb = onDate('purchases', t);
   const tSale = sum(ts), tCost = sum(tb), tCust = new Set(ts.map(r=>r.customerId)).size;
@@ -651,30 +653,38 @@ function renderHome(){
   const dr = sales.filter(r=>r.mode && r.mode!=='いつも'), by = {'値引き':0,'単価変更':0,'おまけ':0};
   dr.forEach(r=>by[r.mode]=(by[r.mode]||0)+num(r.discount));
   $('#discountBox').innerHTML = `<div style="display:flex;align-items:baseline;gap:10px"><b style="font-size:24px;color:var(--orange)">${yen(sum(dr,'discount'))}</b><span style="font-size:12px;color:var(--mute)">${dr.length}件・いつもの値段との差</span></div><div class="chips" style="margin-top:8px">${Object.entries(by).map(([k,v])=>`<span class="tag o">${k} ${yen(v)}</span>`).join('')}</div><div class="hint">サービスした分が見えると、値付けの見直しに役立ちます。</div>`;
-  renderPR(sales);
 }
 const short = v => v >= 10000 ? (Math.round(v/1000)/10)+'万' : Math.round(v).toLocaleString();
 
-function renderPR(sales){
-  const pm = prevMonth(S.month), prev = inMonth('sales', pm);
-  const agg = rows => { const g={}; rows.forEach(r=>{ const x=g[r.itemId]=g[r.itemId]||{id:r.itemId,name:r.itemName,v:0,q:0,unit:r.unit||'',cust:new Set()}; x.v+=num(r.total); x.q+=num(r.qty); x.cust.add(r.customerId); }); return g; };
-  const a = agg(sales), b = agg(prev);
-  const top = Object.values(a).sort((x,y)=>y.cust.size-x.cust.size || y.v-x.v).slice(0,3);
-  const grow = Object.values(a).filter(x=>b[x.id] && b[x.id].v>0 && x.v>b[x.id].v).map(x=>({...x,rate:Math.round((x.v/b[x.id].v-1)*100)})).sort((x,y)=>y.rate-x.rate).slice(0,3);
-  const fresh = Object.values(a).filter(x=>!b[x.id]).slice(0,5);
-  const m = Number(S.month.slice(5));
-  if(!sales.length){ $('#prBox').innerHTML = emptyHTML('📣','販売の記録がたまると、投稿のネタが自動で出てきます'); return; }
-  const blk = (h,c) => `<div class="blk"><div class="h">${h}</div><div class="c">${c}</div></div>`;
-  $('#prBox').innerHTML =
-    blk(`🏆 ${m}月の人気（買ってくれたお客さまが多い順）`, top.map((x,i)=>`${i+1}位 ${icon(S.items[x.id])} <b>${esc(x.name)}</b>（${x.cust.size}軒）`).join('<br>')) +
-    blk('📈 先月より売れている品目', grow.length ? grow.map(x=>`${icon(S.items[x.id])} <b>${esc(x.name)}</b> 先月比 +${x.rate}%`).join('<br>') : '先月のデータがそろうと表示されます') +
-    blk(`✨ ${m}月にはじめて売れた品目（旬のサイン）`, fresh.length ? fresh.map(x=>`${icon(S.items[x.id])} ${esc(x.name)}`).join('、') : 'なし') +
-    `<button class="btn sub" id="prCopy">📋 投稿用メモをコピー</button>`;
-  $('#prCopy').onclick = async () => {
-    const txt = `【${m}月の人気ランキング】\n` + top.map((x,i)=>`${i+1}位 ${x.name}`).join('\n') + (fresh.length?`\n\n【いまが旬】\n${fresh.map(x=>x.name).join('・')}`:'') + (grow.length?`\n\n【先月より人気上昇中】\n${grow.map(x=>x.name).join('・')}`:'');
-    copyText(txt, '投稿用メモ');
-  };
+/* ---- ホーム: 予約・配達を先頭に ---- */
+function planNeeds(d){
+  const raws = {}, ready = {};
+  onDate('orders', d).forEach(r => {
+    const it = S.items[r.itemId]; if(!it) return;
+    const raw = it.rawItemId && S.items[it.rawItemId];
+    if(raw && num(it.packKg)){ const g = raws[raw.id] = raws[raw.id] || {raw, net:0}; g.net += num(r.qty)*num(it.packKg); }
+    else if(!raw){ const g = ready[it.id] = ready[it.id] || {it, qty:0}; g.qty += num(r.qty); }
+  });
+  const out = [];
+  Object.values(raws).forEach(g => { const y = num(g.raw.yieldPct); out.push(`${icon(g.raw)} <b>${esc(g.raw.name)}</b> 約${fmtQ(y ? Math.ceil(g.net/(y/100)*10-1e-9)/10 : g.net)}kg`); });
+  Object.values(ready).forEach(g => out.push(`${icon(g.it)} ${esc(g.it.name)} ${fmtQ(g.qty)}${esc(g.it.unit||'')}`));
+  return out;
 }
+function renderHomeOrders(t){
+  const todo = ordersOf(onDate('orders', t)).filter(o=>o.lines[0].status!=='配達済').sort((a,b)=>String(a.lines[0].area||'').localeCompare(String(b.lines[0].area||''),'ja'));
+  const doneN = ordersOf(onDate('orders', t)).length - todo.length;
+  $('#hdSum').textContent = todo.length ? `残り${todo.length}件` : (doneN ? '全部おわり 🎉' : '');
+  $('#hdList').innerHTML = todo.length ? todo.map(o => `<div class="li"><div class="ic">📦</div><div class="m"><div class="t">${esc(o.customerName)}</div><div class="sub">${esc(o.lines[0].area||'')}${o.lines[0].area?' ・ ':''}${linesText(o)}</div></div><div class="a">${yen(o.total)}</div><button class="btn pri" data-hdeliver="${esc(o.id)}" style="margin:0;padding:11px 14px;font-size:14px;width:auto;box-shadow:none">配達する</button></div>`).join('')
+    : emptyHTML(doneN?'🎉':'📭', doneN ? '今日の注文はすべて配達済みです' : '今日の配達注文はありません');
+  const d1 = addDays(t,1), tm = ordersOf(onDate('orders', d1)), needs = planNeeds(d1);
+  $('#htSum').textContent = tm.length ? `${tm.length}件・${yen(sum(tm))}` : '';
+  $('#htBody').innerHTML = tm.length ? `<div class="hint" style="margin:0 0 6px">${tm.map(o=>esc(san(o.customerName))).join('、')}</div>` + (needs.length ? `<div class="hint" style="margin:0">仕入れの目安：</div><div style="line-height:1.9">${needs.join('<br>')}</div>` : '')
+    : `<div class="hint" style="margin:0">明日の注文はまだありません。前日までに受けた注文を「📝 注文を受ける」から入れておくと、仕入れの目安が出ます。</div>`;
+}
+$('#hdList').onclick = e => { const b = e.target.closest('[data-hdeliver]'); if(!b) return; S.sellMode='deliver'; $('#sDate').value=todayStr(); goView('sell'); startDeliver(b.dataset.hdeliver); };
+$('#hNewOrder').onclick = () => { S.sellMode='order'; $('#sDate').value=addDays(todayStr(),1); S.cart=null; goView('sell'); };
+$('#hSell').onclick = () => { S.sellMode='deliver'; $('#sDate').value=todayStr(); S.cart=null; goView('sell'); };
+$('#hBuy').onclick = () => { $('#bDate').value=addDays(todayStr(),1); goView('buy'); };
 async function copyText(txt, title){
   try{ await navigator.clipboard.writeText(txt); toast('コピーしました'); }
   catch(e){ openSheet(`<h3>${esc(title)}</h3><div class="hint">長押しで選んでコピーしてください。</div><textarea class="csv" readonly>${esc(txt)}</textarea><div class="acts"><button class="btn gray" data-close>閉じる</button></div>`); }

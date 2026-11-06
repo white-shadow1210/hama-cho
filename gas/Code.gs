@@ -203,3 +203,69 @@ function findRow(sh, id) {
 /* ---------- 日付 ---------- */
 function prevMonth(m) { const y = +m.slice(0, 4), mm = +m.slice(5, 7); const d = new Date(y, mm - 2, 1); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2); }
 function addDays(s, n) { const p = s.split('-').map(Number); const d = new Date(p[0], p[1] - 1, p[2] + n); return Utilities.formatDate(d, TZ, 'yyyy-MM-dd'); }
+
+/* =========================================================
+ *  週次レポート（Nさんだけにメールで届く）
+ *  使い方: Apps Script で weeklyReportSetup を1回だけ実行
+ *         → 毎週月曜の朝8時ごろに、先週のまとめがメールで届きます。
+ *  送り先は、このスクリプトを作った Google アカウントのメールアドレスだけです。
+ *  すぐ試したいときは weeklyReportNow を実行してください。
+ * ========================================================= */
+function weeklyReportSetup() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'weeklyReport') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('weeklyReport').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(8).create();
+  weeklyReport();
+}
+function weeklyReportNow() { weeklyReport(); }
+
+function weeklyReport() {
+  const to = Session.getEffectiveUser().getEmail();
+  if (!to) throw new Error('送り先のメールアドレスを取得できませんでした');
+  const today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+  const dow = new Date(today + 'T00:00:00+09:00').getDay();          // 0=日
+  const thisMon = addDays(today, -((dow + 6) % 7));
+  const from = addDays(thisMon, -7), toD = addDays(thisMon, -1);     // 先週 月〜日
+  const pFrom = addDays(from, -7), pTo = addDays(from, -1);          // その前の週
+  const inR = function (r, a, b) { const d = String(r.date || ''); return d >= a && d <= b; };
+  const sales = readAll('sales'), buys = readAll('purchases'), custs = readAll('customers');
+  const ws = sales.filter(function (r) { return inR(r, from, toD); });
+  const ps = sales.filter(function (r) { return inR(r, pFrom, pTo); });
+  const wb = buys.filter(function (r) { return inR(r, from, toD); });
+  const sum = function (rows, k) { return rows.reduce(function (s, r) { return s + (Number(r[k]) || 0); }, 0); };
+  const agg = function (rows) {
+    const g = {};
+    rows.forEach(function (r) {
+      const x = g[r.itemId] = g[r.itemId] || { name: r.itemName, v: 0, q: 0, unit: r.unit, cust: {} };
+      x.v += Number(r.total) || 0; x.q += Number(r.qty) || 0; x.cust[r.customerId] = 1;
+    });
+    return g;
+  };
+  const a = agg(ws), b = agg(ps);
+  const list = Object.keys(a).map(function (k) { return { id: k, x: a[k] }; });
+  const top = list.slice().sort(function (p, q) { return Object.keys(q.x.cust).length - Object.keys(p.x.cust).length || q.x.v - p.x.v; }).slice(0, 5);
+  const up = list.filter(function (o) { return b[o.id] && b[o.id].v > 0 && o.x.v > b[o.id].v; })
+    .map(function (o) { return { name: o.x.name, rate: Math.round((o.x.v / b[o.id].v - 1) * 100) }; })
+    .sort(function (p, q) { return q.rate - p.rate; }).slice(0, 3);
+  const fresh = list.filter(function (o) { return !b[o.id] && !sales.some(function (r) { return r.itemId === o.id && String(r.date) < from; }); }).map(function (o) { return o.x.name; }).slice(0, 5);
+  const newC = custs.filter(function (c) { return inR({ date: c.since }, from, toD); }).length;
+  const yen = function (n) { return '¥' + Math.round(n).toLocaleString('en-US'); };
+  const sale = sum(ws, 'total'), cost = sum(wb, 'total'), prevSale = sum(ps, 'total');
+  const diff = prevSale ? ' （前の週比 ' + (sale >= prevSale ? '+' : '') + Math.round((sale / prevSale - 1) * 100) + '%）' : '';
+  const unpaid = sales.filter(function (r) { return r.pay === '掛け'; });
+  const lines = [];
+  lines.push('先週（' + from.slice(5) + ' 〜 ' + toD.slice(5) + '）のまとめです。', '');
+  lines.push('■ 売上 ' + yen(sale) + diff, '■ 仕入れ ' + yen(cost) + ' ／ 差額 ' + yen(sale - cost));
+  lines.push('■ お客さま ' + Object.keys(ws.reduce(function (o, r) { o[r.customerId] = 1; return o; }, {})).length + '軒 ／ 新しいお客さま ' + newC + '軒');
+  lines.push('■ 未入金（掛け）' + unpaid.length + '行・' + yen(sum(unpaid, 'total')), '');
+  lines.push('【インスタ・PRのネタ】');
+  lines.push('◎ 人気（買ってくれたお客さまが多い順）');
+  top.forEach(function (o, i) { lines.push('  ' + (i + 1) + '位 ' + o.x.name + '（' + Object.keys(o.x.cust).length + '軒）'); });
+  if (!top.length) lines.push('  先週の販売はありませんでした');
+  lines.push('◎ 前の週より伸びた品目');
+  if (up.length) up.forEach(function (o) { lines.push('  ' + o.name + ' +' + o.rate + '%'); }); else lines.push('  なし');
+  lines.push('◎ 先週はじめて売れた品目（旬のサイン）');
+  lines.push('  ' + (fresh.length ? fresh.join('、') : 'なし'));
+  MailApp.sendEmail(to, '【販売・仕入れ】先週のまとめ ' + from.slice(5) + '〜' + toD.slice(5), lines.join('\n'));
+}
