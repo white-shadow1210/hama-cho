@@ -178,6 +178,8 @@ input[type=checkbox]{width:22px;height:22px;-webkit-appearance:checkbox;appearan
 .flow b{color:var(--ink);font-variant-numeric:tabular-nums}
 .flow .in{background:var(--sky);border-radius:8px;padding:3px 7px}
 .flow .out{background:#fff1df;border-radius:8px;padding:3px 7px}
+.flow .ord{background:#efe9fb;border-radius:8px;padding:3px 7px}
+.lp.need input{border-color:var(--orange);background:#fff8ee}
 .st{font-size:12px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap}
 .st.ok{background:#e3f5ec;color:#1e7a52}.st.left{background:var(--sky);color:var(--navy)}.st.ng{background:#fdeceb;color:#b03a28}
 /* nav */
@@ -222,6 +224,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
 
   <!-- ===== HOME ===== -->
   <section id="v-home">
+    <div id="orderAlert"></div>
     <div id="unpaidAlert"></div>
     <div class="card"><h2>☀️ 今日 <small id="todayLabel"></small></h2><div class="kpis" id="kToday"></div></div>
     <div class="card"><h2>📅 この月の合計 <small id="monthLabel2"></small></h2><div class="kpis" id="kMonth"></div></div>
@@ -245,14 +248,19 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
   <!-- ===== SELL ===== -->
   <section id="v-sell" class="hidden">
     <div id="sellPick">
+      <div class="seg" id="sellTabs"><button data-sm="deliver" class="on">🚚 配達・販売</button><button data-sm="order">📝 注文を受ける</button></div>
+      <div class="card" id="dateCard">
+        <div class="datebar" style="margin:0"><span id="dateLabel" style="font-size:13px;color:var(--mute)">日付</span><input type="date" id="sDate"></div>
+        <div class="chips hidden" id="orderChips" style="margin-top:8px"><button class="chip sm" data-dd="0">今日</button><button class="chip sm" data-dd="1">明日</button><button class="chip sm" data-dd="2">あさって</button></div>
+      </div>
+      <div class="card" id="dueCard"><h2>📦 配達する注文 <small id="dueSum"></small></h2><div id="dueList"></div></div>
       <div class="card">
-        <h2>🚚 どのお客さま？</h2>
-        <div class="datebar"><span style="font-size:13px;color:var(--mute)">日付</span><input type="date" id="sDate"></div>
+        <h2 id="pickTitle">🚚 どのお客さま？</h2>
         <input class="search" id="cPickSearch" placeholder="🔍 名前・地域で探す">
         <div class="cgrid" id="cGrid"></div>
-        <div class="hint">よく注文があるお客さまほど上に出ます。✓ はこの日に登録済みです。</div>
+        <div class="hint" id="pickHint"></div>
       </div>
-      <div class="card"><h2>📋 この日の販売 <small id="sDayLabel"></small></h2><div class="list" id="orderList"></div></div>
+      <div class="card"><h2 id="listTitle">📋 この日の販売</h2><div class="list" id="orderList"></div></div>
     </div>
     <div id="sellCart" class="hidden">
       <div class="cust-head"><div class="n" id="cartCust"></div><button id="cartBack">変更</button></div>
@@ -263,14 +271,14 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
         <div class="itemcloud" id="itemCloud"></div>
       </div>
       <div id="cartLines"></div>
-      <div class="card">
+      <div class="card" id="payCard">
         <h2>💴 お支払い</h2>
         <div class="paybox" id="payBox">
           <button class="paybtn on" data-pay="現金">💴 その場で現金<small>受け取り済み</small></button>
           <button class="paybtn" data-pay="掛け">📒 掛け（あとで）<small>未入金として残す</small></button>
         </div>
-        <label class="f">メモ（任意）</label><input id="cartNote" placeholder="例：玄関前に置き配">
       </div>
+      <div class="card"><label class="f" style="margin-top:0">メモ（任意）</label><input id="cartNote" placeholder="例：玄関前に置き配"></div>
     </div>
   </section>
 
@@ -279,6 +287,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
     <div class="seg" id="buyTabs"><button data-t="buy" class="on">🛒 仕入れ</button><button data-t="proc">🔪 加工</button><button data-t="recon">⚖️ 数の確認</button></div>
 
     <div id="t-buy">
+      <div class="card" id="buyPlan"><h2>📦 注文から見る仕入れの目安 <small id="bpLabel"></small></h2><div id="bpBody"></div></div>
       <div class="card">
         <h2>🛒 仕入れを入力</h2>
         <label class="f">日付</label><input type="date" id="bDate">
@@ -410,7 +419,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
    設定：ここだけ書きかえればOK
    ========================================================= */
 const APP_NAME = '販売・仕入れ管理';      // 画面上の名前
-const GAS_URL  = '';                      // Apps Script の「ウェブアプリURL」を入れると、家族は合言葉だけで使えます
+const GAS_URL  = 'https://script.google.com/macros/s/AKfycbznon5rfQEPjZ7S5A2bA8b29dYVW43R7OivY5-Oabz4kG4OJ4mj06MEahxvMYoZp4JL/exec';                      // Apps Script の「ウェブアプリURL」を入れると、家族は合言葉だけで使えます
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -452,7 +461,7 @@ const STARTER = [
  ['イカフライ','惣菜・珍味','パック',1000,'',''],['ひとくちイカフライ','惣菜・珍味','パック',700,'',''],
  ['はんぺん','惣菜・珍味','パック',500,'',''],['おでん具','惣菜・珍味','パック',1000,'','']
 ];
-const TABLES = ['items','customers','purchases','processes','sales'];
+const TABLES = ['items','customers','purchases','processes','sales','orders'];
 
 document.title = APP_NAME; $('#appName').textContent = '🐟 ' + APP_NAME;
 function toast(msg, ms=2000){ const t=$('#toast'); t.innerHTML=msg; t.classList.add('on'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('on'),ms); }
@@ -465,7 +474,7 @@ const LS = {
 const K_CFG='sakana-cfg-v2', K_DATA='sakana-data-v2', K_OUT='sakana-outbox-v2';
 
 /* ---------- state ---------- */
-const S = { items:{}, customers:{}, purchases:{}, processes:{}, sales:{},
+const S = { items:{}, customers:{}, purchases:{}, processes:{}, sales:{}, orders:{}, sellMode:'deliver',
   month: todayStr().slice(0,7), view:'home', buyTab:'buy', reconP:'day',
   cart:null, sync:'demo', syncErr:'' };
 let cfg = LS.get(K_CFG, {url:'', key:''});
@@ -599,6 +608,9 @@ function renderHome(){
   const unpaid = ordersOf(arr('sales').filter(isCredit));
   $('#unpaidAlert').innerHTML = unpaid.length ? `<div class="note err" style="cursor:pointer" id="goUnpaid">📒 未入金（掛け）が <b>${unpaid.length}件・${yen(sum(unpaid))}</b> あります。<u>一覧を見る</u></div>` : '';
   const gu = $('#goUnpaid'); if(gu) gu.onclick = () => goView('more');
+  const tdue = ordersOf(onDate('orders', t)).filter(o=>o.lines[0].status!=='配達済'), tm = ordersOf(onDate('orders', addDays(t,1)));
+  $('#orderAlert').innerHTML = (tdue.length||tm.length) ? `<div class="note info" style="cursor:pointer" id="goOrders">📦 ${tdue.length?`今日の配達 残り <b>${tdue.length}件</b>`:'今日の配達はありません'}${tm.length?` ／ 明日の注文 <b>${tm.length}件・${yen(sum(tm))}</b>`:''}　<u>開く</u></div>` : '';
+  const go = $('#goOrders'); if(go) go.onclick = () => { S.sellMode='deliver'; $('#sDate').value=todayStr(); goView('sell'); };
   // today
   const ts = onDate('sales', t), tb = onDate('purchases', t);
   const tSale = sum(ts), tCost = sum(tb), tCust = new Set(ts.map(r=>r.customerId)).size;
@@ -672,41 +684,91 @@ async function copyText(txt, title){
    SELL — お客さま → 品目 → 確認 → 登録
    ========================================================= */
 $('#sDate').value = todayStr();
-$('#sDate').onchange = () => { syncDateMonth($('#sDate').value); renderAll(); };
+const dayWord = d => { const n = Math.round((parseD(d) - parseD(todayStr()))/86400000); return n===0?'今日':n===1?'明日':n===2?'あさって':n===-1?'昨日':''; };
+$('#sDate').onchange = () => { if(S.sellMode!=='order') syncDateMonth($('#sDate').value); renderAll(); };
 $('#cPickSearch').oninput = () => renderPick();
+$('#sellTabs').onclick = e => { const b = e.target.closest('[data-sm]'); if(!b) return; S.sellMode = b.dataset.sm; $('#sDate').value = S.sellMode==='order' ? addDays(todayStr(),1) : todayStr(); renderAll(); };
+$('#orderChips').onclick = e => { const b = e.target.closest('[data-dd]'); if(!b) return; $('#sDate').value = addDays(todayStr(), Number(b.dataset.dd)); renderAll(); };
 function renderSell(){
   const inCart = !!S.cart;
   $('#sellPick').classList.toggle('hidden', inCart);
   $('#sellCart').classList.toggle('hidden', !inCart);
   inCart ? renderCart() : renderPick();
 }
+const linesText = o => o.lines.map(l=>`${esc(l.itemName)} ${fmtQ(l.qty)}${esc(l.unit||'')}`).join('、');
 function renderPick(){
-  const d = $('#sDate').value || todayStr(), q = $('#cPickSearch').value.trim();
-  const freq = custFrequency(), done = new Set(onDate('sales', d).map(r=>r.customerId));
+  const order = S.sellMode==='order';
+  const d = $('#sDate').value || todayStr(), q = $('#cPickSearch').value.trim(), w = dayWord(d);
+  $$('#sellTabs button').forEach(b => b.classList.toggle('on', b.dataset.sm===S.sellMode));
+  $('#orderChips').classList.toggle('hidden', !order); $('#dueCard').classList.toggle('hidden', order);
+  $$('#orderChips .chip').forEach(c => c.classList.toggle('on', addDays(todayStr(), Number(c.dataset.dd))===d));
+  $('#dateLabel').textContent = order ? '配達する日' : '日付';
+  $('#pickTitle').textContent = order ? '📝 どのお客さまの注文？' : '🚚 注文なしの販売（飛び込み・追加）';
+  $('#pickHint').textContent = order ? 'よく注文があるお客さまほど上に出ます。✓ はこの日の注文が入っているお客さまです。' : '注文にないお客さまや、追加の販売はここから。✓ はこの日に登録済みのお客さまです。';
+  const freq = custFrequency(), done = new Set(onDate(order?'orders':'sales', d).map(r=>r.customerId));
   const list = custArr().filter(c => !q || (String(c.name)+(c.area||'')+(c.phone||'')).includes(q))
     .sort((a,b)=>(freq[b.id]||0)-(freq[a.id]||0) || String(a.name).localeCompare(String(b.name),'ja'));
   $('#cGrid').innerHTML = list.map(c => `<button class="cbtn ${done.has(c.id)?'done':''}" data-pick="${esc(c.id)}"><div class="n">${esc(c.name)}</div><div class="s">${esc(c.area||'')}${freq[c.id]?` ・ 90日で${freq[c.id]}回`:''}</div></button>`).join('')
     + `<button class="cbtn new" id="pickNew">＋ 新しいお客さま</button>`;
-  $('#sDayLabel').textContent = md(d);
-  const orders = ordersOf(onDate('sales', d));
-  $('#orderList').innerHTML = orders.length ? orders.map(o => `<div class="li"><div class="ic">🏠</div><div class="m"><div class="t">${esc(o.customerName)}${isCredit(o)?'<span class="tag r">掛け</span>':''}${o.pay==='入金済'?'<span class="tag g">入金済</span>':''}</div><div class="sub">${o.lines.map(l=>`${esc(l.itemName)} ${fmtQ(l.qty)}${esc(l.unit||'')}`).join('、')}</div></div><div class="a">${yen(o.total)}${o.discount?`<small>サービス −${yen(o.discount)}</small>`:''}</div><button class="btn del" data-delorder="${esc(o.id)}">削除</button></div>`).join('')
-    + `<div class="li" style="border-top:2px solid var(--line)"><div class="m"><div class="t">合計 ${orders.length}軒</div></div><div class="a" style="color:var(--navy2);font-size:18px">${yen(sum(orders))}</div></div>`
-    : emptyHTML('🚚','この日の販売はまだありません');
+  $('#listTitle').innerHTML = `${order?'📋 この日の注文':'📋 この日の販売'} <small>${md(d)}${w?'・'+w:''}</small>`;
+  if(order){
+    const os = ordersOf(onDate('orders', d));
+    $('#orderList').innerHTML = os.length ? os.map(o => { const dn = o.lines[0].status==='配達済'; return `<div class="li"><div class="ic">📝</div><div class="m"><div class="t">${esc(o.customerName)}${dn?'<span class="tag g">配達済</span>':''}</div><div class="sub">${linesText(o)}</div></div><div class="a">${yen(o.total)}</div>${dn?'':`<button class="btn sub" data-editorder="${esc(o.id)}" style="padding:8px 10px;font-size:13px">直す</button>`}<button class="btn del" data-delord="${esc(o.id)}">削除</button></div>`; }).join('')
+      + `<div class="li" style="border-top:2px solid var(--line)"><div class="m"><div class="t">合計 ${os.length}軒</div></div><div class="a" style="color:var(--navy2);font-size:18px">${yen(sum(os))}</div></div>`
+      : emptyHTML('📝','この日の注文はまだありません。お客さまをタップして入れましょう');
+  } else {
+    const orders = ordersOf(onDate('sales', d));
+    $('#orderList').innerHTML = orders.length ? orders.map(o => `<div class="li"><div class="ic">🏠</div><div class="m"><div class="t">${esc(o.customerName)}${isCredit(o)?'<span class="tag r">掛け</span>':''}${o.pay==='入金済'?'<span class="tag g">入金済</span>':''}</div><div class="sub">${linesText(o)}</div></div><div class="a">${yen(o.total)}${o.discount?`<small>サービス −${yen(o.discount)}</small>`:''}</div><button class="btn del" data-delorder="${esc(o.id)}">削除</button></div>`).join('')
+      + `<div class="li" style="border-top:2px solid var(--line)"><div class="m"><div class="t">合計 ${orders.length}軒</div></div><div class="a" style="color:var(--navy2);font-size:18px">${yen(sum(orders))}</div></div>`
+      : emptyHTML('🚚','この日の販売はまだありません');
+    renderDue(d);
+  }
 }
+function renderDue(d){
+  const all = ordersOf(onDate('orders', d)), st = o => o.lines[0].status;
+  const area = o => String(o.lines[0].area||'');
+  const todo = all.filter(o => st(o)!=='配達済').sort((a,b)=>area(a).localeCompare(area(b),'ja') || String(a.customerName).localeCompare(String(b.customerName),'ja'));
+  const done = all.filter(o => st(o)==='配達済');
+  $('#dueSum').textContent = all.length ? `残り${todo.length}件 / 全${all.length}件` : '';
+  $('#dueList').innerHTML = !all.length ? emptyHTML('📭','この日の注文はありません。前日までに受けた注文は「📝 注文を受ける」から入れられます')
+    : (todo.length ? todo.map(o => `<div class="li"><div class="ic">📦</div><div class="m"><div class="t">${esc(o.customerName)}</div><div class="sub">${esc(area(o))}${area(o)?' ・ ':''}${linesText(o)}</div></div><div class="a">${yen(o.total)}</div><button class="btn pri" data-deliver="${esc(o.id)}" style="margin:0;padding:11px 14px;font-size:14px;width:auto;box-shadow:none">配達する</button></div>`).join('') : emptyHTML('🎉','この日の注文はすべて配達済みです'))
+    + (done.length ? `<div class="hint">配達済 ${done.length}件：${done.map(o=>esc(o.customerName)).join('、')}</div>` : '');
+}
+$('#dueList').onclick = e => { const b = e.target.closest('[data-deliver]'); if(b) startDeliver(b.dataset.deliver); };
 $('#cGrid').onclick = e => {
   if(e.target.closest('#pickNew')) { openCustomer(null, id => startCart(id)); return; }
   const b = e.target.closest('[data-pick]'); if(b) startCart(b.dataset.pick);
 };
 $('#orderList').onclick = e => {
+  const ed = e.target.closest('[data-editorder]'); if(ed){ startEditOrder(ed.dataset.editorder); return; }
+  const d2 = e.target.closest('[data-delord]');
+  if(d2){ const rows = arr('orders').filter(r => r.orderId===d2.dataset.delord);
+    confirmSheet(`${esc(san(rows[0]?.customerName||''))}の注文を削除しますか？`, `${rows.length}品・${yen(sum(rows))}`, () => { commit(rows.map(l=>del('orders', l.id))); toast('削除しました'); }); return; }
   const b = e.target.closest('[data-delorder]'); if(!b) return;
   const lines = arr('sales').filter(r => (r.orderId||r.id) === b.dataset.delorder);
   confirmSheet(`${esc(san(lines[0]?.customerName||''))}の注文を削除しますか？`, `${lines.length}品・${yen(sum(lines))}`, () => { commit(lines.map(l=>del('sales', l.id))); toast('削除しました'); });
 };
-function startCart(cid){
-  S.cart = {customerId:cid, lines:[], pay:'現金', note:''};
+function resetCartUI(){
   $('#itemSearch').value=''; $('#cartNote').value='';
   $$('#payBox .paybtn').forEach(x=>x.classList.toggle('on', x.dataset.pay==='現金'));
   renderSell(); window.scrollTo(0,0);
+}
+function startCart(cid){
+  S.cart = {customerId:cid, kind: S.sellMode==='order'?'order':'sale', lines:[], pay:'現金', note:''};
+  resetCartUI();
+}
+const linesFromRows = rows => rows.map(r => { const it = S.items[r.itemId]; if(!it) return null; const m = r.mode||'いつも';
+  return {k:uid(), itemId:r.itemId, qty:r.qty, lp:num(r.listPrice)||num(it.price), mode:m, disc: m==='値引き'?r.discount:'', custom: m==='単価変更'?r.unitPrice:''}; }).filter(Boolean);
+function startDeliver(orderId){
+  const rows = arr('orders').filter(r => r.orderId===orderId); if(!rows.length) return;
+  S.cart = {customerId:rows[0].customerId, kind:'sale', fromOrder:orderId, lines:linesFromRows(rows), pay:'現金', note:rows[0].note||''};
+  resetCartUI(); $('#cartNote').value = S.cart.note;
+}
+function startEditOrder(orderId){
+  const rows = arr('orders').filter(r => r.orderId===orderId); if(!rows.length) return;
+  $('#sDate').value = rows[0].date;
+  S.cart = {customerId:rows[0].customerId, kind:'order', editing:orderId, editIds:rows.map(r=>r.id), lines:linesFromRows(rows), pay:'現金', note:rows[0].note||''};
+  resetCartUI(); $('#cartNote').value = S.cart.note;
 }
 $('#cartBack').onclick = () => {
   if(S.cart && S.cart.lines.length){ confirmSheet('入力中の内容を消して、お客さまを選び直しますか？','', ()=>{ S.cart=null; renderAll(); }, '選び直す'); }
@@ -730,7 +792,9 @@ function addLine(itemId, qty, lp){
 function renderCart(){
   const c = S.customers[S.cart.customerId];
   if(!c){ S.cart=null; renderSell(); return; }
-  $('#cartCust').innerHTML = `${esc(san(c.name))}<small>${esc(c.area||'')} ・ ${md($('#sDate').value||todayStr())}</small>`;
+  const kind = S.cart.kind, d0 = $('#sDate').value || todayStr();
+  $('#cartCust').innerHTML = `${kind==='order'?'📝 注文：':S.cart.fromOrder?'📦 配達：':''}${esc(san(c.name))}<small>${esc(c.area||'')} ・ ${kind==='order'?'配達日 ':''}${md(d0)}</small>`;
+  $('#payCard').classList.toggle('hidden', kind==='order');
   const favs = favoritesFor(c.id), inCart = new Set(S.cart.lines.map(l=>l.itemId));
   $('#favCard').classList.toggle('hidden', !favs.length);
   $('#favList').innerHTML = favs.map(f => { const it=S.items[f.itemId], L=f.last; return `<button class="favbtn ${inCart.has(f.itemId)?'in':''}" data-fav="${esc(f.itemId)}"><div class="n">${icon(it)} ${esc(it.name)}</div><div class="s">前回 ${fmtQ(L.qty)}${esc(L.unit||it.unit||'')}・${yen(L.unitPrice)}${L.mode&&L.mode!=='いつも'?'（'+esc(L.mode)+'）':''} ・ ${f.n}回</div></button>`; }).join('');
@@ -743,7 +807,7 @@ function renderCart(){
       <div class="lt"><span>${icon(it)} ${esc(it.name)}</span><button data-rm aria-label="取り消す">×</button></div>
       <div class="lr">
         <div><div class="mini">数量</div><div class="step"><button data-dec>−</button><input data-f="qty" type="number" inputmode="decimal" value="${esc(l.qty)}"><span class="u">${u}</span><button data-inc>＋</button></div></div>
-        <div class="lp"><div class="mini">いつもの単価</div><input data-f="lp" type="number" inputmode="numeric" value="${esc(l.lp)}" placeholder="0"></div>
+        <div class="lp ${!num(l.lp)&&l.mode==='いつも'?'need':''}"><div class="mini">${!num(l.lp)&&l.mode==='いつも'?'単価を入力（次回から自動で入ります）':'いつもの単価'}</div><input data-f="lp" type="number" inputmode="numeric" value="${esc(l.lp)}" placeholder="0"></div>
       </div>
       <div class="chips modes">${['いつも','値引き','単価変更','おまけ'].map(m=>`<button class="chip sm ${l.mode===m?'on':''}" data-mode="${m}">${m==='いつも'?'いつもの値段':m==='おまけ'?'おまけ(0円)':m}</button>`).join('')}</div>
       ${l.mode==='値引き'?`<div class="extra"><div class="mini">値引き額（合計から・円）</div><input data-f="disc" type="number" inputmode="numeric" value="${esc(l.disc)}" placeholder="例：100"></div>`:''}
@@ -757,7 +821,7 @@ function updateBar(){
   $('#cartBar').classList.toggle('hidden', !on); document.body.classList.toggle('has-bar', on);
   if(!on) return;
   const tot = S.cart.lines.reduce((s,l)=>s+lineCalc(l).total, 0);
-  $('#barTotal').textContent = yen(tot); $('#barCount').textContent = `${S.cart.lines.length}品 ・ ${S.cart.pay}`;
+  $('#barTotal').textContent = yen(tot); $('#barCount').textContent = `${S.cart.lines.length}品 ・ ${S.cart.kind==='order'?'注文':S.cart.pay}`;
   $('#cartConfirm').disabled = !S.cart.lines.length;
 }
 $('#favList').onclick = e => { const b=e.target.closest('[data-fav]'); if(!b) return; const f=favoritesFor(S.cart.customerId).find(x=>x.itemId===b.dataset.fav); const it=S.items[b.dataset.fav]; addLine(b.dataset.fav, num(f.last.qty)||1, num(it.price) || num(f.last.listPrice) || num(f.last.unitPrice)); };
@@ -781,24 +845,34 @@ $('#cartLines').addEventListener('input', e => {
 $('#payBox').onclick = e => { const b=e.target.closest('[data-pay]'); if(!b) return; S.cart.pay=b.dataset.pay; $$('#payBox .paybtn').forEach(x=>x.classList.toggle('on',x===b)); updateBar(); };
 $('#cartNote').oninput = e => { if(S.cart) S.cart.note = e.target.value; };
 $('#cartConfirm').onclick = () => {
-  const c = S.customers[S.cart.customerId], d = $('#sDate').value || todayStr();
-  const lines = S.cart.lines.map(l => ({l, it:S.items[l.itemId], k:lineCalc(l)}));
+  const cart = S.cart, isOrder = cart.kind==='order';
+  const c = S.customers[cart.customerId], d = $('#sDate').value || todayStr(), w = dayWord(d);
+  const lines = cart.lines.map(l => ({l, it:S.items[l.itemId], k:lineCalc(l)}));
   const bad = lines.find(x => !x.k.qty); if(bad){ toast(`${esc(bad.it.name)} の数量を入れてください`); return; }
   const noPrice = lines.find(x => !x.k.lp && x.l.mode!=='おまけ' && x.l.mode!=='単価変更');
   const tot = lines.reduce((s,x)=>s+x.k.total,0), disc = lines.reduce((s,x)=>s+x.k.discount,0);
-  openSheet(`<h3>この内容で登録しますか？</h3>
-    <div class="conf-cust">${esc(san(c.name))}</div><div class="conf-meta">${md(d)} ・ ${esc(c.area||'')}</div>
+  openSheet(`<h3>${isOrder?'この注文を受けますか？':'この内容で登録しますか？'}</h3>
+    <div class="conf-cust">${esc(san(c.name))}</div><div class="conf-meta">${isOrder?'配達日 ':''}${md(d)}${isOrder&&w?'（'+w+'）':''} ・ ${esc(c.area||'')}</div>
     ${lines.map(x=>`<div class="conf-line"><div>${icon(x.it)} ${esc(x.it.name)}<div class="q">${fmtQ(x.k.qty)}${esc(x.it.unit||'')} × ${yen(x.k.unit)}${x.l.mode!=='いつも'?` <span class="tag o">${esc(x.l.mode)}</span>`:''}</div></div><div class="p">${yen(x.k.total)}${x.k.discount?`<small>−${yen(x.k.discount)}</small>`:''}</div></div>`).join('')}
     ${noPrice?`<div class="note" style="margin-top:10px">⚠️ ${esc(noPrice.it.name)} の単価が0円です。よろしいですか？</div>`:''}
-    <div class="conf-total"><span>合計${disc?`<br><small style="color:var(--orange)">サービス −${yen(disc)}</small>`:''}</span><b>${yen(tot)}</b></div>
-    <div class="conf-pay ${S.cart.pay==='掛け'?'credit':'cash'}">${S.cart.pay==='掛け'?'📒 掛け（未入金として記録）':'💴 その場で現金・受け取り済み'}</div>
-    <div class="acts"><button class="btn gray" data-close style="flex:.7">戻る</button><button class="btn pri big" id="doRegister">登録する</button></div>`);
+    <div class="conf-total"><span>${isOrder?'見込みの合計':'合計'}${disc?`<br><small style="color:var(--orange)">サービス −${yen(disc)}</small>`:''}</span><b>${yen(tot)}</b></div>
+    ${isOrder?`<div class="conf-pay" style="background:var(--sky);color:var(--navy)">📝 注文として記録（配達するまで売上には入りません）</div>`:`<div class="conf-pay ${cart.pay==='掛け'?'credit':'cash'}">${cart.pay==='掛け'?'📒 掛け（未入金として記録）':'💴 その場で現金・受け取り済み'}</div>`}
+    <div class="acts"><button class="btn gray" data-close style="flex:.7">戻る</button><button class="btn pri big" id="doRegister">${isOrder?'注文を受ける':'登録する'}</button></div>`);
   $('#doRegister').onclick = () => {
-    const orderId = 'o' + uid(), ts = Date.now(), dow = dowOf(d);
-    const ops = lines.map((x,i) => up('sales', uid(), {orderId, date:d, dow, customerId:c.id, customerName:c.name, area:c.area||'', itemId:x.it.id, itemName:x.it.name, qty:x.k.qty, unit:x.it.unit||'', listPrice:x.k.lp, unitPrice:x.k.unit, total:x.k.total, discount:x.k.discount, mode:x.l.mode, pay:S.cart.pay, paidDate: S.cart.pay==='現金'?d:'', note:S.cart.note||'', ts:ts+i}));
+    const ts = Date.now(), dow = dowOf(d);
+    const base = (x,i) => ({date:d, dow, customerId:c.id, customerName:c.name, area:c.area||'', itemId:x.it.id, itemName:x.it.name, qty:x.k.qty, unit:x.it.unit||'', listPrice:x.k.lp, unitPrice:x.k.unit, total:x.k.total, discount:x.k.discount, mode:x.l.mode, note:cart.note||'', ts:ts+i});
+    let ops;
+    if(isOrder){
+      const orderId = cart.editing || 'r'+uid();
+      ops = (cart.editIds||[]).map(id => del('orders', id)).concat(lines.map((x,i) => up('orders', uid(), {...base(x,i), orderId, status:'受付'})));
+    } else {
+      const orderId = 'o'+uid();
+      ops = lines.map((x,i) => up('sales', uid(), {...base(x,i), orderId, pay:cart.pay, paidDate: cart.pay==='現金'?d:''}));
+      if(cart.fromOrder) arr('orders').filter(r => r.orderId===cart.fromOrder).forEach(r => ops.push(up('orders', r.id, {...r, status:'配達済', saleOrderId:orderId})));
+    }
     lines.forEach(x => { if(!num(x.it.price) && x.k.lp) ops.push(up('items', x.it.id, {...x.it, price:x.k.lp})); });
-    closeSheet(); S.cart = null; syncDateMonth(d); commit(ops);
-    toast(`✅ ${esc(san(c.name))} ${yen(tot)} を登録しました`, 2600); window.scrollTo(0,0);
+    closeSheet(); S.cart = null; if(!isOrder) syncDateMonth(d); commit(ops);
+    toast(isOrder ? `✅ ${esc(san(c.name))}の注文を受けました（${md(d)}）` : `✅ ${esc(san(c.name))} ${yen(tot)} を登録しました`, 2600); window.scrollTo(0,0);
   };
 };
 
@@ -816,6 +890,7 @@ $('#bUnit').innerHTML = UNITS.map(u=>`<option>${u}</option>`).join('');
 ['#bDate','#pDate','#rDate'].forEach(s => $(s).value = todayStr());
 
 function renderBuy(){
+  renderBuyPlan();
   fillSel($('#bItem'), itemOptions(true));
   const d = $('#bDate').value || todayStr(); $('#bDayLabel').textContent = md(d);
   const rows = onDate('purchases', d).sort((a,b)=>num(b.ts)-num(a.ts));
@@ -843,6 +918,45 @@ $('#bSave').onclick = () => {
   commit(ops); $('#bQty').value=''; $('#bCost').value=''; $('#bNote').value=''; $('#bQuick').innerHTML=''; calcBuy();
   toast(`${esc(it.name)} ${fmtQ(qty)}${esc(unit)} を記録しました`);
 };
+
+/* orders -> purchase plan */
+const planExtra = {}, bpCalc = {};
+function bpLine(rid, d){
+  const c = bpCalc[rid]; if(!c) return '';
+  const extra = num(planExtra[d+':'+rid]), plan = Math.round((c.need+extra)*10)/10, rest = Math.round((plan-c.bought)*10)/10;
+  return `仕入れ予定 <b>${fmtQ(plan)}kg</b> ／ 仕入れ済み ${fmtQ(c.bought)}kg ／ ${rest>0?`あと <b style="color:var(--orange)">${fmtQ(rest)}kg</b>`:'<b style="color:var(--green)">そろっています ✅</b>'}`;
+}
+function renderBuyPlan(){
+  const d = $('#bDate').value || todayStr(), w = dayWord(d);
+  $('#bpLabel').textContent = md(d) + (w?'・'+w:'');
+  const rows = onDate('orders', d);
+  if(!rows.length){ $('#bpBody').innerHTML = `<div class="hint" style="margin:0">この日の注文はまだありません。🚚販売 →「📝 注文を受ける」から入れると、ここに仕入れの目安が出ます。</div>`; return; }
+  const raws = {}, ready = {}, noW = {};
+  rows.forEach(r => {
+    const it = S.items[r.itemId]; if(!it) return;
+    const raw = it.rawItemId && S.items[it.rawItemId];
+    if(raw && num(it.packKg)){ const g = raws[raw.id] = raws[raw.id] || {raw, net:0}; g.net += num(r.qty)*num(it.packKg); }
+    else if(raw){ (noW[raw.id] = noW[raw.id] || new Set()).add(it.name); }
+    else { const g = ready[it.id] = ready[it.id] || {it, qty:0}; g.qty += num(r.qty); }
+  });
+  const pur = onDate('purchases', d), boughtOf = id => sum(pur.filter(p=>p.itemId===id), 'qty');
+  let h = '';
+  Object.keys(bpCalc).forEach(k => delete bpCalc[k]);
+  Object.values(raws).forEach(g => {
+    const y = num(g.raw.yieldPct), need = y ? Math.ceil(g.net/(y/100)*10-1e-9)/10 : 0, rid = g.raw.id;
+    bpCalc[rid] = {need, bought: boughtOf(rid)};
+    h += `<div class="rc"><div class="h">${icon(g.raw)}<span>${esc(g.raw.name)}</span></div>
+      <div class="flow"><span class="ord">注文分の正味 <b>${fmtQ(g.net)}kg</b></span>${y?`<span class="out">歩留まり${y}% → 目安 <b>約${fmtQ(need)}kg</b></span>`:'<span class="out">歩留まり未設定（品目の編集で入れられます）</span>'}</div>
+      ${y?`<div style="display:flex;align-items:center;gap:8px;margin-top:8px"><span class="hint" style="margin:0;white-space:nowrap">＋α 上乗せ</span><input data-extra="${esc(rid)}" type="number" inputmode="decimal" value="${esc(planExtra[d+':'+rid]||'')}" placeholder="0" style="width:90px;padding:8px;font-size:15px"><span class="hint" style="margin:0">kg</span></div><div class="hint" data-bp="${esc(rid)}">${bpLine(rid, d)}</div>`:''}</div>`;
+  });
+  Object.values(ready).sort((a,b)=>String(a.it.name).localeCompare(String(b.it.name),'ja')).forEach(g => {
+    const b = boughtOf(g.it.id), rest = Math.round((g.qty-b)*100)/100, u = esc(g.it.unit||'');
+    h += `<div class="rc"><div class="h">${icon(g.it)}<span>${esc(g.it.name)}</span><span class="st ${rest>0?'left':'ok'}">${rest>0?`あと ${fmtQ(rest)}${u}`:'そろっています ✅'}</span></div><div class="flow"><span class="ord">注文 <b>${fmtQ(g.qty)}</b>${u}</span><span class="in">仕入れ済み <b>${fmtQ(b)}</b>${u}</span></div></div>`;
+  });
+  Object.entries(noW).forEach(([rid, names]) => { h += `<div class="hint" style="color:var(--orange)">⚠️ ${esc(S.items[rid].name)} から作る ${[...names].map(esc).join('、')} は、1個の重さが未設定のため計算に入っていません。</div>`; });
+  $('#bpBody').innerHTML = h + `<div class="hint">注文の合計 ${yen(sum(rows))}（見込み）。当日の＋α・飛び込み注文の分は「上乗せ」に入れてください。</div>`;
+}
+$('#bpBody').addEventListener('input', e => { const rid = e.target.dataset.extra; if(!rid) return; const d = $('#bDate').value || todayStr(); planExtra[d+':'+rid] = e.target.value; const el = $(`[data-bp="${rid}"]`); if(el) el.innerHTML = bpLine(rid, d); });
 
 /* process */
 let outs = [{k:uid(), itemId:'', qty:''}];
@@ -919,20 +1033,22 @@ function renderRecon(){
   $('#reconDateBar').classList.toggle('hidden', S.reconP!=='day');
   const d = $('#rDate').value || todayStr();
   const pick = t => S.reconP==='day' ? onDate(t, d) : inMonth(t);
-  const g = {}; const key = (id,name,unit) => { const k = id+'|'+(unit||''); return g[k] = g[k] || {id, name, unit:unit||'', buy:0, made:0, used:0, sold:0}; };
+  const g = {}; const key = (id,name,unit) => { const k = id+'|'+(unit||''); return g[k] = g[k] || {id, name, unit:unit||'', buy:0, made:0, used:0, sold:0, ordered:0}; };
   pick('purchases').forEach(r => key(r.itemId, r.itemName, r.unit).buy += num(r.qty));
   pick('processes').forEach(r => { if(num(r.fromQty)) key(r.fromItemId, r.fromItemName, r.fromUnit).used += num(r.fromQty); key(r.toItemId, r.toItemName, r.toUnit).made += num(r.toQty); });
   pick('sales').forEach(r => key(r.itemId, r.itemName, r.unit).sold += num(r.qty));
+  pick('orders').filter(r => r.status!=='配達済').forEach(r => key(r.itemId, r.itemName, r.unit).ordered += num(r.qty));
   const rows = Object.values(g).map(x => ({...x, left: Math.round((x.buy + x.made - x.used - x.sold)*100)/100}))
     .sort((a,b)=> (a.left<0?0:a.left>0?1:2) - (b.left<0?0:b.left>0?1:2) || String(a.name).localeCompare(String(b.name),'ja'));
   const units = {}; rows.forEach(r => (units[r.id] = units[r.id] || new Set()).add(r.unit));
   $('#reconList').innerHTML = rows.length ? rows.map(r => {
-    const st = r.left===0 ? `<span class="st ok">✅ ぴったり</span>` : r.left>0 ? `<span class="st left">📦 残り ${fmtQ(r.left)}${esc(r.unit)}</span>` : `<span class="st ng">⚠️ ${fmtQ(-r.left)}${esc(r.unit)} 足りない</span>`;
+    const st = r.left<0 ? `<span class="st ng">⚠️ ${fmtQ(-r.left)}${esc(r.unit)} 足りない</span>` : (r.ordered && r.left<r.ordered) ? `<span class="st ng">⚠️ 注文に ${fmtQ(r.ordered-r.left)}${esc(r.unit)} 足りない</span>` : r.left===0 ? `<span class="st ok">✅ ぴったり</span>` : r.left>0 ? `<span class="st left">📦 残り ${fmtQ(r.left)}${esc(r.unit)}</span>` : `<span class="st ng">⚠️ ${fmtQ(-r.left)}${esc(r.unit)} 足りない</span>`;
     const u = esc(r.unit); const parts = [];
     if(r.buy) parts.push(`<span class="in">仕入 <b>${fmtQ(r.buy)}</b>${u}</span>`);
     if(r.made) parts.push(`<span class="in">加工でできた <b>${fmtQ(r.made)}</b>${u}</span>`);
     if(r.used) parts.push(`<span class="out">加工に使った <b>${fmtQ(r.used)}</b>${u}</span>`);
     if(r.sold) parts.push(`<span class="out">販売 <b>${fmtQ(r.sold)}</b>${u}</span>`);
+    if(r.ordered) parts.push(`<span class="ord">注文待ち <b>${fmtQ(r.ordered)}</b>${u}</span>`);
     return `<div class="rc"><div class="h">${icon(S.items[r.id])}<span>${esc(r.name)}</span>${st}</div><div class="flow">${parts.join('')}</div>${units[r.id].size>1?'<div class="hint" style="color:var(--orange)">⚠️ 単位がちがう記録があるため、単位ごとに分けて表示しています</div>':''}${r.left<0&&!r.buy&&!r.made?'<div class="hint">仕入れ・加工の記録がありません。入力もれか、前日からの在庫かもしれません。</div>':''}</div>`;
   }).join('') : emptyHTML('⚖️','この期間の記録がありません');
 }
@@ -995,11 +1111,17 @@ $('#unpaidList').onclick = e => {
 };
 $('#iSearch').oninput = renderMore;
 $('#iAdd').onclick = () => openItem(null);
+const RAW_OF = {'マグロ サク（大・700g）':'バチマグロ（原料）','マグロ 赤ブロック（700g）':'バチマグロ（原料）','マグロ サク（400g）':'バチマグロ（原料）','マグロ 切身':'バチマグロ（原料）','マグロ 赤身切身':'バチマグロ（原料）','マグロ たたき':'バチマグロ（原料）','マグロ まじり':'バチマグロ（原料）','トンボ 切身':'トンボ（原料）','トンボ しっぽ部分':'トンボ（原料）'};
 $('#iStarter').onclick = () => {
-  const have = new Set(arr('items').map(i=>i.name)), add = STARTER.filter(x=>!have.has(x[0]));
-  if(!add.length) return toast('標準の品目はすべて登録済みです');
-  confirmSheet(`標準の品目を${add.length}件入れますか？`, '奥さまのメモと価格表の内容です。あとから自由に直せます。（すでにある同じ名前の品目は入れません）', () => {
-    commit(add.map(x => up('items', 'i'+uid(), {name:x[0], cat:x[1], unit:x[2], price:x[3], packKg:x[4], yieldPct:x[5], active:true, created:todayStr()}))); toast(`${add.length}品目を入れました`);
+  const byName = {}; arr('items').forEach(i => byName[i.name] = i);
+  const add = STARTER.filter(x => !byName[x[0]]);
+  const fix = Object.keys(RAW_OF).filter(n => byName[n] && !byName[n].rawItemId);
+  if(!add.length && !fix.length) return toast('標準の品目はすべて登録済みです');
+  confirmSheet(add.length ? `標準の品目を${add.length}件入れますか？` : '加工品と原料のひもづけを設定しますか？', '奥さまのメモと価格表の内容です。あとから自由に直せます。（すでにある同じ名前の品目は入れません）', () => {
+    const ids = {}; Object.keys(byName).forEach(n => ids[n] = byName[n].id); add.forEach(x => ids[x[0]] = 'i'+uid());
+    const ops = add.map(x => up('items', ids[x[0]], {name:x[0], cat:x[1], unit:x[2], price:x[3], packKg:x[4], yieldPct:x[5], rawItemId: RAW_OF[x[0]] ? (ids[RAW_OF[x[0]]]||'') : '', active:true, created:todayStr()}));
+    fix.forEach(n => { const rid = ids[RAW_OF[n]]; if(rid) ops.push(up('items', byName[n].id, {...byName[n], rawItemId:rid})); });
+    commit(ops); toast(add.length ? `${add.length}品目を入れました` : 'ひもづけを設定しました');
   }, '入れる', 'green');
 };
 $('#iList').onclick = e => { const li = e.target.closest('[data-item]'); if(li) openItem(li.dataset.item); };
@@ -1014,6 +1136,7 @@ function openItem(id, after, preset={}){
     <div><label class="f">単位</label><select id="fiUnit">${UNITS.map(u=>`<option ${u===(it.unit||'尾')?'selected':''}>${u}</option>`).join('')}</select></div></div>
     <div class="grid2"><div><label class="f">1個（パック）の重さ（kg）</label><input id="fiPack" type="number" inputmode="decimal" step="0.01" value="${esc(it.packKg||'')}" placeholder="例：0.23"></div>
     <div><label class="f">歩留まり目安（%）</label><input id="fiYield" type="number" inputmode="decimal" value="${esc(it.yieldPct||'')}" placeholder="原料のみ 例：64"></div></div>
+    <label class="f">もとになる原料（加工して売る商品のとき）</label><select id="fiRaw"><option value="">なし</option>${itemsArr().filter(i=>i.unit==='kg'&&i.id!==id).map(i=>`<option value="${esc(i.id)}" ${i.id===it.rawItemId?'selected':''}>${esc(i.name)}</option>`).join('')}</select>
     <div class="hint">仕入れだけに使う原料は、販売単価は空でOKです。重さを入れておくと、加工のときに正味の重さと歩留まりが自動で出ます。歩留まりはkgで仕入れる原料にだけ入れます。</div>
     <label class="f" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="fiActive" ${off?'':'checked'}> 今の時期に扱っている（外すと選択肢から隠れます）</label>
     <div class="acts">${id?'<button class="btn gray" id="fiDel" style="flex:.6;color:var(--red)">削除</button>':''}<button class="btn gray" data-close>やめる</button><button class="btn pri" id="fiOk">保存</button></div>`);
@@ -1021,7 +1144,7 @@ function openItem(id, after, preset={}){
   $('#fiOk').onclick = () => {
     const name = $('#fiName').value.trim(); if(!name) return toast('品目名を入れてください');
     const nid = id || 'i'+uid();
-    commit([up('items', nid, {...it, name, cat, price:num($('#fiPrice').value), unit:$('#fiUnit').value, packKg:num($('#fiPack').value)||'', yieldPct:num($('#fiYield').value)||'', active:$('#fiActive').checked, created: it.created || todayStr()})]);
+    commit([up('items', nid, {...it, name, cat, price:num($('#fiPrice').value), unit:$('#fiUnit').value, packKg:num($('#fiPack').value)||'', yieldPct:num($('#fiYield').value)||'', rawItemId:$('#fiRaw').value, active:$('#fiActive').checked, created: it.created || todayStr()})]);
     closeSheet(); toast('保存しました'); if(after) after(nid);
   };
   if(id) $('#fiDel').onclick = () => confirmSheet(`「${esc(it.name)}」を削除しますか？`, '季節で扱わないだけなら「今の時期に扱っている」を外すのがおすすめです。過去の記録は残ります。', () => { commit([del('items', id)]); toast('削除しました'); });

@@ -21,7 +21,7 @@ const SCHEMA = {
   items: { sheet: '品目', cols: [
     ['id','ID','t'],['name','品目名','t'],['cat','種類','t'],['unit','単位','t'],['price','販売単価','n'],
     ['active','扱い中','b'],['lastCost','前回仕入単価','n'],['lastCostDate','前回仕入日','t'],['created','登録日','t'],
-    ['packKg','1個の重さ(kg)','n'],['yieldPct','歩留まり目安(%)','n'] ]},
+    ['packKg','1個の重さ(kg)','n'],['yieldPct','歩留まり目安(%)','n'],['rawItemId','原料ID','t'] ]},
   customers: { sheet: '顧客', cols: [
     ['id','ID','t'],['name','お名前','t'],['phone','連絡先','t'],['area','地域','t'],['since','取引開始日','t'] ]},
   purchases: { sheet: '仕入れ', cols: [
@@ -35,8 +35,39 @@ const SCHEMA = {
     ['id','ID','t'],['orderId','注文ID','t'],['date','日付','t'],['dow','曜日','t'],['customerId','顧客ID','t'],
     ['customerName','お客さま','t'],['area','地域','t'],['itemId','品目ID','t'],['itemName','品目','t'],['qty','数量','n'],
     ['unit','単位','t'],['listPrice','いつもの単価','n'],['unitPrice','販売単価','n'],['total','販売金額','n'],
-    ['discount','値引き額','n'],['mode','売り方','t'],['pay','支払い','t'],['paidDate','入金日','t'],['note','メモ','t'],['ts','登録時刻','n'] ]}
+    ['discount','値引き額','n'],['mode','売り方','t'],['pay','支払い','t'],['paidDate','入金日','t'],['note','メモ','t'],['ts','登録時刻','n'] ]},
+  orders: { sheet: '注文', cols: [
+    ['id','ID','t'],['orderId','注文ID','t'],['date','配達日','t'],['dow','曜日','t'],['customerId','顧客ID','t'],
+    ['customerName','お客さま','t'],['area','地域','t'],['itemId','品目ID','t'],['itemName','品目','t'],['qty','数量','n'],
+    ['unit','単位','t'],['listPrice','いつもの単価','n'],['unitPrice','販売単価','n'],['total','見込み金額','n'],
+    ['discount','値引き額','n'],['mode','売り方','t'],['status','状態','t'],['saleOrderId','販売の注文ID','t'],['note','メモ','t'],['ts','登録時刻','n'] ]}
 };
+
+/* 表のシートを取得。無ければ自動で作る（あとから表が増えても setup の再実行は不要） */
+function getSheet(table) {
+  const def = SCHEMA[table];
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(def.sheet);
+  if (!sh) {
+    sh = ss.insertSheet(def.sheet);
+    const head = def.cols.map(function (c) { return c[1]; });
+    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground('#1d3a5f').setFontColor('#ffffff');
+    sh.setFrozenRows(1);
+    def.cols.forEach(function (c, i) {
+      const col = sh.getRange(2, i + 1, sh.getMaxRows() - 1, 1);
+      if (c[2] === 't') col.setNumberFormat('@');
+      if (c[2] === 'n') col.setNumberFormat('#,##0.##');
+    });
+    sh.hideColumns(1);
+  }
+  // 列が増えた場合は見出しを補う（品目の「原料ID」など）
+  const head2 = def.cols.map(function (c) { return c[1]; });
+  const cur = sh.getRange(1, 1, 1, head2.length).getValues()[0];
+  if (cur.join('|') !== head2.join('|')) {
+    sh.getRange(1, 1, 1, head2.length).setValues([head2]).setFontWeight('bold').setBackground('#1d3a5f').setFontColor('#ffffff');
+  }
+  return sh;
+}
 
 /* ---------- 最初に1回だけ実行 ---------- */
 function setup() {
@@ -115,14 +146,15 @@ function load(month, today) {
     customers: readAll('customers'),
     purchases: readAll('purchases').filter(inRange),
     processes: readAll('processes').filter(inRange),
-    sales: readAll('sales').filter(function (r) { return inRange(r) || String(r.date) >= since || r.pay === '掛け'; })
+    sales: readAll('sales').filter(function (r) { return inRange(r) || String(r.date) >= since || r.pay === '掛け'; }),
+    orders: readAll('orders').filter(function (r) { return r.status !== '配達済' || String(r.date) >= since; })
   };
 }
 
 function readAll(table) {
   const def = SCHEMA[table];
-  const sh = SpreadsheetApp.getActive().getSheetByName(def.sheet);
-  if (!sh || sh.getLastRow() < 2) return [];
+  const sh = getSheet(table);
+  if (sh.getLastRow() < 2) return [];
   const vals = sh.getRange(2, 1, sh.getLastRow() - 1, def.cols.length).getValues();
   const out = [];
   vals.forEach(function (row) {
@@ -145,8 +177,7 @@ function readAll(table) {
 function applyOp(op) {
   const def = SCHEMA[op.table];
   if (!def) throw new Error('不明な表: ' + op.table);
-  const sh = SpreadsheetApp.getActive().getSheetByName(def.sheet);
-  if (!sh) throw new Error('シートがありません: ' + def.sheet + '（setup を実行してください）');
+  const sh = getSheet(op.table);
   const id = String(op.id || '');
   if (!id) throw new Error('IDがありません');
   const row = findRow(sh, id);
