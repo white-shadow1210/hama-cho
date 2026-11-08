@@ -39,6 +39,8 @@ details.cl>summary::after{content:'▾';color:var(--mute);margin-left:6px}
 details.cl[open]>summary::after{content:'▴'}
 details.cl .ca{margin-left:auto;color:var(--navy2)}
 details.cl .cb{padding:2px 2px 12px}
+.tel{display:inline-block;color:var(--sea);font-weight:700;text-decoration:none;background:var(--sky);border-radius:99px;padding:4px 10px;margin:4px 4px 0 0}
+.tel.big{display:block;text-align:center;padding:12px;font-size:16px;margin:6px 0 0}
 .note.info{background:var(--sky);border-color:#cfe0f2;color:var(--navy)}
 .card{background:#fff;border-radius:var(--r);padding:16px;margin-bottom:14px;box-shadow:0 1px 2px rgba(29,58,95,.06),0 4px 14px rgba(29,58,95,.05)}
 .card h2{font-size:15px;margin:0 0 12px;color:var(--navy);display:flex;align-items:center;gap:8px}
@@ -731,6 +733,49 @@ function openRoute(){
   route = [...new Set(due)].filter(id=>S.customers[id]).sort((a,b)=>{ const A=S.customers[a], B=S.customers[b]; return (bigArea(A.area)==='吉田町')-(bigArea(B.area)==='吉田町') || String(A.area||'').localeCompare(String(B.area||''),'ja'); });
   paintRoute(d, '');
 }
+/* ミニマップ：国土地理院の住所検索で位置を出し、地理院地図に番号つきで表示（キー不要・無料） */
+let geoCache = LS.get('sakana-geo', {});
+async function geocode(addr){
+  if(!addr) return null;
+  if(geoCache[addr] !== undefined) return geoCache[addr];
+  try{
+    const r = await fetch('https://msearch.gsi.go.jp/address-search/AddressSearch?q='+encodeURIComponent(addr));
+    const j = await r.json(); const f = j && j[0];
+    const p = f ? [f.geometry.coordinates[1], f.geometry.coordinates[0]] : null;
+    geoCache[addr] = p; LS.set('sakana-geo', geoCache); return p;
+  }catch(e){ return null; }
+}
+let leafletP = null;
+function loadLeaflet(){
+  if(window.L) return Promise.resolve();
+  if(leafletP) return leafletP;
+  leafletP = new Promise((ok, ng) => {
+    const css = document.createElement('link'); css.rel='stylesheet'; css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.appendChild(css);
+    const js = document.createElement('script'); js.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'; js.onload=ok; js.onerror=()=>{ leafletP=null; ng(); }; document.head.appendChild(js);
+  });
+  return leafletP;
+}
+const pin = (txt, bg) => L.divIcon({className:'', iconSize:[28,28], iconAnchor:[14,14], html:`<div style="width:28px;height:28px;border-radius:50%;background:${bg};color:#fff;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">${txt}</div>`});
+async function drawRouteMap(sel){
+  const box = $('#rtMap'); if(!box) return;
+  try{ await loadLeaflet(); }catch(e){ box.innerHTML = '<div class="hint" style="padding:12px">地図を読み込めませんでした（電波を確認してください）</div>'; return; }
+  if(!$('#rtMap') || $('#rtMap') !== box) return;
+  const map = L.map(box, {zoomControl:true, attributionControl:true});
+  L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {maxZoom:18, attribution:'<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>'}).addTo(map);
+  const goal = await geocode(GOAL_ADDR) || [34.7716, 138.2516];
+  const pts = [], miss = [];
+  for(let i=0;i<sel.length;i++){
+    const c = sel[i], p = await geocode(fullAddr(c.area));
+    if(!$('#rtMap')) return;
+    if(p){ pts.push(p); L.marker(p, {icon:pin(i+1, bigArea(c.area)==='吉田町'?'#2a7f62':'#1d3a5f')}).addTo(map).bindTooltip(`${i+1}. ${esc(c.name)}`, {direction:'top', offset:[0,-12]}); }
+    else miss.push(c.name);
+  }
+  L.marker(goal, {icon:pin('🏁', '#e8892b')}).addTo(map).bindTooltip('ゴール：吉田町住吉2983-1', {direction:'top', offset:[0,-12]});
+  if(pts.length) L.polyline([...pts, goal], {color:'#e8892b', weight:3, opacity:.8, dashArray:'6 6'}).addTo(map);
+  const all = [...pts, goal];
+  if(all.length > 1) map.fitBounds(all, {padding:[24,24]}); else map.setView(goal, 14);
+  $('#rtMapNote').innerHTML = `番号＝まわる順（🔵牧之原市・🟢吉田町・🏁ゴール）。点線はまわる順の目安で、実際の道とはちがいます。${miss.length?`<br><span style="color:var(--orange)">地図に出せなかった：${miss.map(esc).join('、')}（住所を確認してください）</span>`:''}`;
+}
 function paintRoute(d, q){
   const sel = route.map(id=>S.customers[id]).filter(Boolean);
   const others = custArr().filter(c => !route.includes(c.id) && (!q || (String(c.name)+(c.area||'')).includes(q))).sort((a,b)=>String(a.area||'').localeCompare(String(b.area||''),'ja'));
@@ -738,6 +783,7 @@ function paintRoute(d, q){
   openSheet(`<h3>🗺 配達ルート <small style="font-weight:400;color:var(--mute)">${dayLabel(d)}</small></h3>
     <div class="hint" style="margin-top:0">📍 出発：現在地 → 上から順にまわる → 🏁 ゴール：吉田町住吉2983-1</div>
     <div id="rtSel">${sel.length ? sel.map((c,i)=>`<div class="li"><div class="ic" style="font-weight:700;color:var(--navy)">${i+1}</div><div class="m"><div class="t">${esc(c.name)}</div><div class="sub">${fullAddr(c.area)?esc(c.area)+(/\d/.test(c.area)?'':' <span style="color:var(--orange)">（番地なし：町の中心へ）</span>'):'<span style="color:var(--red)">住所が未登録（ルートに入りません）</span>'}</div></div><button class="btn sub" data-rup="${i}" style="width:auto;margin:0;padding:8px 10px" ${i?'':'disabled'}>↑</button><button class="btn sub" data-rdn="${i}" style="width:auto;margin:0;padding:8px 10px" ${i<sel.length-1?'':'disabled'}>↓</button><button class="btn del" data-rrm="${esc(c.id)}">外す</button></div>`).join('') : '<div class="hint">配達するお客さまを下から選んでください</div>'}</div>
+    <div id="rtMap" style="height:240px;border-radius:12px;margin-top:10px;background:var(--beige2);overflow:hidden"></div><div class="hint" id="rtMapNote" style="margin-top:4px"></div>
     <div class="acts" style="margin-top:10px"><button class="btn gray" data-close style="flex:.6">閉じる</button><button class="btn pri big" id="rtGo" ${sel.length-noAd.length?'':'disabled'}>🗺 マップでルートを開く</button></div>
     <div id="rtLinks"></div>
     <h4 style="margin:16px 0 4px">＋ ほかのお客さまを足す</h4>
@@ -753,6 +799,7 @@ function paintRoute(d, q){
     else if(ad){ route.push(ad.dataset.radd); paintRoute(d, qq); }
   };
   $('#rtQ').oninput = e => { const v = e.target.value; clearTimeout(paintRoute._t); paintRoute._t = setTimeout(()=>{ paintRoute(d, v); const el=$('#rtQ'); el.focus(); el.setSelectionRange(v.length,v.length); }, 400); };
+  drawRouteMap(sel);
   $('#rtGo').onclick = () => {
     const stops = sel.map(c=>fullAddr(c.area)).filter(Boolean), links = [];
     let origin = '', rest = stops.slice();
@@ -970,7 +1017,7 @@ function renderCart(){
   const c = S.customers[S.cart.customerId];
   if(!c){ S.cart=null; renderSell(); return; }
   const kind = S.cart.kind, d0 = $('#sDate').value || todayStr();
-  $('#cartCust').innerHTML = `${kind==='order'?'📝 注文：':S.cart.fromOrder?'📦 配達：':''}${esc(san(c.name))}<small>${esc(c.area||'')} ・ ${kind==='order'?'配達日 ':''}${md(d0)}</small>`;
+  $('#cartCust').innerHTML = `${kind==='order'?'📝 注文：':S.cart.fromOrder?'📦 配達：':''}${esc(san(c.name))}<small>${esc(c.area||'')} ・ ${kind==='order'?'配達日 ':''}${md(d0)}${telsOf(c).length?' ・ '+telsOf(c).map(telLink).join(' '):''}</small>`;
   $('#payCard').classList.toggle('hidden', kind==='order');
   const favs = favoritesFor(c.id), inCart = new Set(S.cart.lines.map(l=>l.itemId));
   $('#favCard').classList.toggle('hidden', !favs.length);
@@ -1359,22 +1406,25 @@ function renderCust(){
   $('#cCount').textContent = `${all.length}軒`;
   const ms = {}; inMonth('sales').forEach(r => ms[r.customerId] = (ms[r.customerId]||0) + num(r.total));
   const unpaid = {}; arr('sales').filter(isCredit).forEach(r => unpaid[r.customerId] = (unpaid[r.customerId]||0) + num(r.total));
-  $('#cList').innerHTML = list.length ? list.map(c => `<div class="li" data-cust="${esc(c.id)}" style="cursor:pointer"><div class="ic">🏠</div><div class="m"><div class="t">${esc(c.name)}${String(c.since||'').slice(0,7)===S.month?'<span class="tag g">新規</span>':''}${unpaid[c.id]?`<span class="tag r">未入金 ${yen(unpaid[c.id])}</span>`:''}</div><div class="sub">📍${esc(c.area||'地域未登録')}${telsOf(c).map(t=>' ・ 📞'+esc(t)).join('')}</div>${c.note?`<div class="sub" style="color:var(--sea)">📝 ${esc(c.note)}</div>`:''}</div><div class="a" style="font-size:13px">${ms[c.id]?yen(ms[c.id]):''}<small style="color:var(--mute)">${c.since?esc(String(c.since).replace(/-/g,'/'))+'〜':''}</small></div></div>`).join('') : emptyHTML('👥', all.length ? '見つかりませんでした' : 'まだ登録がありません');
+  $('#cList').innerHTML = list.length ? list.map(c => `<div class="li" data-cust="${esc(c.id)}" style="cursor:pointer"><div class="ic">🏠</div><div class="m"><div class="t">${esc(c.name)}${String(c.since||'').slice(0,7)===S.month?'<span class="tag g">新規</span>':''}${unpaid[c.id]?`<span class="tag r">未入金 ${yen(unpaid[c.id])}</span>`:''}</div><div class="sub">📍${esc(c.area||'地域未登録')}</div>${telsOf(c).length?`<div class="sub">${telsOf(c).map(telLink).join(' ')}</div>`:''}${c.note?`<div class="sub" style="color:var(--sea)">📝 ${esc(c.note)}</div>`:''}</div><div class="a" style="font-size:13px">${ms[c.id]?yen(ms[c.id]):''}<small style="color:var(--mute)">${c.since?esc(String(c.since).replace(/-/g,'/'))+'〜':''}</small></div></div>`).join('') : emptyHTML('👥', all.length ? '見つかりませんでした' : 'まだ登録がありません');
   const ar = {}, sub = {}; all.forEach(c => { const a = bigArea(c.area); ar[a] = (ar[a]||0) + 1; const t = townOf(c.area); if(t){ sub[a] = sub[a]||{}; sub[a][t] = (sub[a][t]||0)+1; } });
   const ae = Object.entries(ar).sort((a,b)=>(a[0]==='その他・未設定')-(b[0]==='その他・未設定') || b[1]-a[1]), amx = Math.max(1, ...ae.map(x=>x[1]));
   $('#areaRank').innerHTML = ae.length ? ae.map(([a,n])=>`<div class="row"><div class="ic">📍</div><div><div>${esc(a)}${sub[a]?`<span style="font-size:12px;color:var(--mute);margin-left:6px">${Object.entries(sub[a]).sort((x,y)=>y[1]-x[1]).map(([t,k])=>esc(t)+k).join('・')}</span>`:''}</div><div class="bar"><div style="width:${n/amx*100}%;background:var(--green)"></div></div></div><div class="amt">${n}軒</div></div>`).join('') : emptyHTML('📍','お客さまを登録すると表示されます');
 }
 $('#cSearch').oninput = renderCust;
 $('#cAdd').onclick = () => openCustomer(null);
-$('#cList').onclick = e => { const li = e.target.closest('[data-cust]'); if(li) openCustomer(li.dataset.cust); };
+$('#cList').onclick = e => { if(e.target.closest('a.tel')) return; const li = e.target.closest('[data-cust]'); if(li) openCustomer(li.dataset.cust); };
 /* 電話番号：スプレッドシートで先頭の0が消えた番号を元に戻す（9〜10桁の数字だけで0始まりでないもの） */
 const fixTel = v => { const t = String(v==null?'':v).trim(); return /^[1-9]\d{8,9}$/.test(t) ? '0'+t : t; };
 const telsOf = c => [fixTel(c.phone), fixTel(c.phone2)].filter(Boolean);
+const telHref = t => 'tel:' + String(t).replace(/[^\d+]/g,'');
+const telLink = t => `<a class="tel" href="${telHref(t)}">📞 ${esc(t)}</a>`;
 function openCustomer(id, after){
   const c = id ? S.customers[id] : {name:'', phone:'', phone2:'', area:'', note:'', since:todayStr()};
   const areas = [...new Set([...custArr().map(x=>x.area).filter(Boolean), ...AREA_DEFAULT])];
   openSheet(`<h3>${id?'お客さま情報の編集':'新しいお客さま'}</h3>
     <label class="f">お名前 <span style="color:var(--red)">*</span></label><input id="fcName" value="${esc(c.name)}" placeholder="例：山田さん／〇〇食堂">
+    ${telsOf(c).length?`<div style="margin-top:8px">${telsOf(c).map(t=>`<a class="tel big" href="${telHref(t)}">📞 ${esc(t)} に電話する</a>`).join('')}</div>`:''}
     <label class="f">連絡先 1</label><input id="fcPhone" type="tel" inputmode="tel" value="${esc(fixTel(c.phone))}" placeholder="例：090-1234-5678（携帯）">
     <label class="f">連絡先 2</label><input id="fcPhone2" type="tel" inputmode="tel" value="${esc(fixTel(c.phone2))}" placeholder="例：0548-22-1234（家の電話）">
     <label class="f">地域</label><input id="fcArea" list="areaList" value="${esc(c.area||'')}" placeholder="例：吉田町住吉2983-1（番地まで入れるとマップに出ます）"><datalist id="areaList">${areas.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
