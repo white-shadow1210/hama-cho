@@ -279,7 +279,8 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
       <div class="card"><h2 id="listTitle">📋 この日の販売</h2><div class="list" id="orderList"></div></div>
     </div>
     <div id="sellCart" class="hidden">
-      <div class="cust-head"><div class="n" id="cartCust"></div><button id="cartBack">変更</button></div>
+      <button class="btn sub" id="cartBack2" style="width:auto;margin:0 0 10px;padding:10px 16px;font-size:15px">‹ 戻る</button>
+      <div class="cust-head"><div class="n" id="cartCust"></div><button id="cartBack">お客さま<br>変更</button></div>
       <div class="card" id="favCard"><h2>⭐ いつもの品目 <small>タップで追加</small></h2><div class="fav" id="favList"></div></div>
       <div class="card">
         <h2>🐟 品目をえらぶ</h2>
@@ -662,7 +663,7 @@ function goView(v, anchor){
   renderAll();
   if(anchor){ setTimeout(()=>$(anchor).scrollIntoView({behavior:'smooth'}),50); } else window.scrollTo(0,0);
 }
-$$('nav button').forEach(b => b.onclick = () => goView(b.dataset.v));
+$$('nav button').forEach(b => b.onclick = () => { if(b.dataset.v==='sell' && S.view==='sell' && S.cart){ $('#cartBack').click(); return; } goView(b.dataset.v); });
 const emptyHTML = (e,t) => `<div class="empty"><span class="e">${e}</span>${t}</div>`;
 function syncDateMonth(d){ if(d && d.slice(0,7) !== S.month){ S.month = d.slice(0,7); load(); } }
 
@@ -994,8 +995,9 @@ function startEditOrder(orderId){
   S.cart = {customerId:rows[0].customerId, kind:'order', editing:orderId, editIds:rows.map(r=>r.id), lines:linesFromRows(rows), pay:'現金', note:rows[0].note||''};
   resetCartUI(); $('#cartNote').value = S.cart.note;
 }
+$('#cartBack2').onclick = () => $('#cartBack').click();
 $('#cartBack').onclick = () => {
-  if(S.cart && S.cart.lines.length){ confirmSheet('入力中の内容を消して、お客さまを選び直しますか？','', ()=>{ S.cart=null; renderAll(); }, '選び直す'); }
+  if(S.cart && S.cart.lines.length){ confirmSheet('入力中の内容を消して戻りますか？','入れた品目は消えます。', ()=>{ S.cart=null; renderAll(); }, '消して戻る'); }
   else { S.cart=null; renderAll(); }
 };
 function lineCalc(l){
