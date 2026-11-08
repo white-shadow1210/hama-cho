@@ -236,6 +236,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
       <h2>📦 今日の配達 <small id="hdSum"></small></h2>
       <div id="hdList"></div>
       <div style="display:flex;gap:8px;margin-top:12px"><button class="btn pri" id="hNewOrder" style="margin:0">📝 注文を受ける</button><button class="btn sub" id="hSell" style="margin:0">🚚 注文なしの販売</button></div>
+      <button class="btn sub" data-route="1" style="margin-top:8px">🗺 配達ルートをつくる</button>
       <button class="btn sub" id="hClose" style="margin-top:8px"></button>
     </div>
     <div class="card" id="homeTomorrow"><h2>🌅 明日の注文と仕入れの目安 <small id="htSum"></small></h2><div id="htBody"></div><div style="display:flex;gap:8px;margin-top:10px"><button class="btn sub" id="hTomorrow" style="margin:0">✏️ 注文を見る・直す</button><button class="btn sub" id="hBuy" style="margin:0">🛒 仕入れへ</button></div></div>
@@ -266,7 +267,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
         <div class="datebar" style="margin:0"><span id="dateLabel" style="font-size:13px;color:var(--mute)">日付</span><input type="date" id="sDate"></div>
         <div class="chips hidden" id="orderChips" style="margin-top:8px"><button class="chip sm" data-dd="0">今日</button><button class="chip sm" data-dd="1">明日</button><button class="chip sm" data-dd="2">あさって</button></div>
       </div>
-      <div class="card" id="dueCard"><h2>📦 配達する注文 <small id="dueSum"></small></h2><div id="dueList"></div></div>
+      <div class="card" id="dueCard"><h2>📦 配達する注文 <small id="dueSum"></small></h2><button class="btn sub" data-route="1" style="margin:0 0 8px">🗺 配達ルートをつくる</button><div id="dueList"></div></div>
       <div class="card">
         <h2 id="pickTitle">🚚 どのお客さま？</h2>
         <input class="search" id="cPickSearch" placeholder="🔍 名前・地域で探す">
@@ -476,6 +477,35 @@ const prevMonth = m => { const [y,mm] = m.split('-').map(Number); const d = new 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 const UNITS = ['kg','尾','匹','枚','パック','箱','本','個','杯','セット','袋'];
 const CATS = {'鮮魚':'🐟','エビ・貝・カニ':'🦐','イカ・タコ':'🦑','切り身・刺身':'🍣','干物・加工品':'🐡','惣菜・珍味':'🍱','その他':'📦'};
+/* 地域：大きく「牧之原市」「吉田町」に分ける */
+const TOWNS = {
+  '牧之原市':['相良','細江','静波','仁田','波津','須々木','地頭方','坂部','勝間田','菅山','大江','片浜','女神','男神','落居','白井','萩間','新庄','蛭ヶ谷','黒子','道場','坂口','笠名','大沢','鬼女新田','堀野新田','中西','布引原','切山','西山寺','福岡','中'],
+  '吉田町':['住吉','片岡','川尻','神戸','大幡']
+};
+function bigArea(a){
+  const t = String(a||'').replace(/\s/g,'');
+  if(/牧之原/.test(t)) return '牧之原市';
+  if(/吉田町|榛原郡吉田/.test(t)) return '吉田町';
+  for(const [city, towns] of Object.entries(TOWNS)) if(towns.some(w => w!=='中' && t.startsWith(w))) return city;
+  return 'その他・未設定';
+}
+function townOf(a){
+  const t = String(a||'').replace(/\s/g,'').replace(/^静岡県/,'').replace(/^榛原郡/,'').replace(/^(牧之原市|吉田町)/,'');
+  const city = bigArea(a); if(city==='その他・未設定') return '';
+  return (TOWNS[city].filter(w => t.startsWith(w)).sort((x,y)=>y.length-x.length)[0]) || '';
+}
+/* Googleマップ用の住所（足りない「静岡県」「市町名」を補う） */
+function fullAddr(a){
+  let t = String(a||'').trim().replace(/\s+/g,''); if(!t || t==='?' || t==='？') return '';
+  if(/^静岡県/.test(t)) return t;
+  if(/^牧之原市/.test(t)) return '静岡県'+t;
+  if(/^(榛原郡)?吉田町/.test(t)) return '静岡県榛原郡'+t.replace(/^榛原郡/,'');
+  const city = bigArea(t);
+  if(city==='牧之原市') return '静岡県牧之原市'+t;
+  if(city==='吉田町') return '静岡県榛原郡吉田町'+t;
+  return '静岡県'+t;
+}
+const GOAL_ADDR = '静岡県榛原郡吉田町住吉2983-1';
 const AREA_DEFAULT = ['吉田町','牧之原市','島田市','焼津市','藤枝市','御前崎市','菊川市','掛川市','静岡市'];
 const san = n => /(さん|様|さま|店|堂|屋|館|荘|亭)$/.test(String(n||'')) ? String(n) : String(n||'')+'さん';
 const icon = it => CATS[(it && it.cat) || '鮮魚'] || '🐟';
@@ -690,6 +720,49 @@ function renderHome(){
   $('#discountBox').innerHTML = `<div style="display:flex;align-items:baseline;gap:10px"><b style="font-size:24px;color:var(--orange)">${yen(sum(dr,'discount'))}</b><span style="font-size:12px;color:var(--mute)">${dr.length}件・いつもの値段との差</span></div><div class="chips" style="margin-top:8px">${Object.entries(by).map(([k,v])=>`<span class="tag o">${k} ${yen(v)}</span>`).join('')}</div><div class="hint">サービスした分が見えると、値付けの見直しに役立ちます。</div>`;
 }
 const short = v => v >= 10000 ? (Math.round(v/1000)/10)+'万' : Math.round(v).toLocaleString();
+
+/* ---- 配達ルート（Googleマップ） ---- */
+const ROUTE_MAX = 9; // Googleマップのリンク1本で寄れる経由地の数
+let route = [];
+document.addEventListener('click', e => { if(e.target.closest('[data-route]')) openRoute(); });
+function openRoute(){
+  const d = (S.view==='sell' ? $('#sDate').value : '') || todayStr();
+  const due = ordersOf(onDate('orders', d)).filter(o=>o.lines[0].status!=='配達済').map(o=>o.lines[0].customerId);
+  route = [...new Set(due)].filter(id=>S.customers[id]).sort((a,b)=>{ const A=S.customers[a], B=S.customers[b]; return (bigArea(A.area)==='吉田町')-(bigArea(B.area)==='吉田町') || String(A.area||'').localeCompare(String(B.area||''),'ja'); });
+  paintRoute(d, '');
+}
+function paintRoute(d, q){
+  const sel = route.map(id=>S.customers[id]).filter(Boolean);
+  const others = custArr().filter(c => !route.includes(c.id) && (!q || (String(c.name)+(c.area||'')).includes(q))).sort((a,b)=>String(a.area||'').localeCompare(String(b.area||''),'ja'));
+  const noAd = sel.filter(c=>!fullAddr(c.area));
+  openSheet(`<h3>🗺 配達ルート <small style="font-weight:400;color:var(--mute)">${dayLabel(d)}</small></h3>
+    <div class="hint" style="margin-top:0">📍 出発：現在地 → 上から順にまわる → 🏁 ゴール：吉田町住吉2983-1</div>
+    <div id="rtSel">${sel.length ? sel.map((c,i)=>`<div class="li"><div class="ic" style="font-weight:700;color:var(--navy)">${i+1}</div><div class="m"><div class="t">${esc(c.name)}</div><div class="sub">${fullAddr(c.area)?esc(c.area)+(/\d/.test(c.area)?'':' <span style="color:var(--orange)">（番地なし：町の中心へ）</span>'):'<span style="color:var(--red)">住所が未登録（ルートに入りません）</span>'}</div></div><button class="btn sub" data-rup="${i}" style="width:auto;margin:0;padding:8px 10px" ${i?'':'disabled'}>↑</button><button class="btn sub" data-rdn="${i}" style="width:auto;margin:0;padding:8px 10px" ${i<sel.length-1?'':'disabled'}>↓</button><button class="btn del" data-rrm="${esc(c.id)}">外す</button></div>`).join('') : '<div class="hint">配達するお客さまを下から選んでください</div>'}</div>
+    <div class="acts" style="margin-top:10px"><button class="btn gray" data-close style="flex:.6">閉じる</button><button class="btn pri big" id="rtGo" ${sel.length-noAd.length?'':'disabled'}>🗺 マップでルートを開く</button></div>
+    <div id="rtLinks"></div>
+    <h4 style="margin:16px 0 4px">＋ ほかのお客さまを足す</h4>
+    <input class="search" id="rtQ" placeholder="🔍 名前・地域で探す" value="${esc(q)}">
+    <div>${others.slice(0,40).map(c=>`<div class="li" data-radd="${esc(c.id)}" style="cursor:pointer"><div class="ic">＋</div><div class="m"><div class="t">${esc(c.name)}</div><div class="sub">${esc(c.area||'住所未登録')}</div></div></div>`).join('')}</div>`);
+  const sh = $('#sheet');
+  sh.onclick = e => {
+    const up_ = e.target.closest('[data-rup]'), dn = e.target.closest('[data-rdn]'), rm = e.target.closest('[data-rrm]'), ad = e.target.closest('[data-radd]');
+    const qq = $('#rtQ') ? $('#rtQ').value : '';
+    if(up_){ const i=+up_.dataset.rup; [route[i-1],route[i]]=[route[i],route[i-1]]; paintRoute(d, qq); }
+    else if(dn){ const i=+dn.dataset.rdn; [route[i+1],route[i]]=[route[i],route[i+1]]; paintRoute(d, qq); }
+    else if(rm){ route = route.filter(x=>x!==rm.dataset.rrm); paintRoute(d, qq); }
+    else if(ad){ route.push(ad.dataset.radd); paintRoute(d, qq); }
+  };
+  $('#rtQ').oninput = e => { const v = e.target.value; clearTimeout(paintRoute._t); paintRoute._t = setTimeout(()=>{ paintRoute(d, v); const el=$('#rtQ'); el.focus(); el.setSelectionRange(v.length,v.length); }, 400); };
+  $('#rtGo').onclick = () => {
+    const stops = sel.map(c=>fullAddr(c.area)).filter(Boolean), links = [];
+    let origin = '', rest = stops.slice();
+    while(rest.length > ROUTE_MAX){ const part = rest.splice(0, ROUTE_MAX); const dest = part.pop(); links.push({origin, way:part, dest}); origin = dest; }
+    links.push({origin, way:rest, dest:GOAL_ADDR});
+    const url = l => 'https://www.google.com/maps/dir/?api=1&travelmode=driving' + (l.origin?'&origin='+encodeURIComponent(l.origin):'') + '&destination='+encodeURIComponent(l.dest) + (l.way.length?'&waypoints='+encodeURIComponent(l.way.join('|')):'');
+    if(links.length===1){ window.open(url(links[0]), '_blank'); return; }
+    $('#rtLinks').innerHTML = `<div class="note info" style="margin-top:10px">お宅が多いので、${links.length}本に分けました。順番に開いてください。</div>` + links.map((l,i)=>`<a class="btn sub" style="display:block;text-align:center;margin-top:6px" href="${url(l)}" target="_blank" rel="noopener">ルート ${i+1}（${i===links.length-1?'🏁 ゴールまで':(l.way.length+1)+'軒'}）</a>`).join('');
+  };
+}
 
 /* ---- 1日の締め ---- */
 const dayLabel = d => `${md(d)}${dayWord(d)?'・'+dayWord(d):''}`;
@@ -1287,9 +1360,9 @@ function renderCust(){
   const ms = {}; inMonth('sales').forEach(r => ms[r.customerId] = (ms[r.customerId]||0) + num(r.total));
   const unpaid = {}; arr('sales').filter(isCredit).forEach(r => unpaid[r.customerId] = (unpaid[r.customerId]||0) + num(r.total));
   $('#cList').innerHTML = list.length ? list.map(c => `<div class="li" data-cust="${esc(c.id)}" style="cursor:pointer"><div class="ic">🏠</div><div class="m"><div class="t">${esc(c.name)}${String(c.since||'').slice(0,7)===S.month?'<span class="tag g">新規</span>':''}${unpaid[c.id]?`<span class="tag r">未入金 ${yen(unpaid[c.id])}</span>`:''}</div><div class="sub">📍${esc(c.area||'地域未登録')}${telsOf(c).map(t=>' ・ 📞'+esc(t)).join('')}</div>${c.note?`<div class="sub" style="color:var(--sea)">📝 ${esc(c.note)}</div>`:''}</div><div class="a" style="font-size:13px">${ms[c.id]?yen(ms[c.id]):''}<small style="color:var(--mute)">${c.since?esc(String(c.since).replace(/-/g,'/'))+'〜':''}</small></div></div>`).join('') : emptyHTML('👥', all.length ? '見つかりませんでした' : 'まだ登録がありません');
-  const ar = {}; all.forEach(c => { const a = c.area || '未登録'; ar[a] = (ar[a]||0) + 1; });
-  const ae = Object.entries(ar).sort((a,b)=>b[1]-a[1]), amx = Math.max(1, ...ae.map(x=>x[1]));
-  $('#areaRank').innerHTML = ae.length ? ae.map(([a,n])=>`<div class="row"><div class="ic">📍</div><div><div>${esc(a)}</div><div class="bar"><div style="width:${n/amx*100}%;background:var(--green)"></div></div></div><div class="amt">${n}軒</div></div>`).join('') : emptyHTML('📍','お客さまを登録すると表示されます');
+  const ar = {}, sub = {}; all.forEach(c => { const a = bigArea(c.area); ar[a] = (ar[a]||0) + 1; const t = townOf(c.area); if(t){ sub[a] = sub[a]||{}; sub[a][t] = (sub[a][t]||0)+1; } });
+  const ae = Object.entries(ar).sort((a,b)=>(a[0]==='その他・未設定')-(b[0]==='その他・未設定') || b[1]-a[1]), amx = Math.max(1, ...ae.map(x=>x[1]));
+  $('#areaRank').innerHTML = ae.length ? ae.map(([a,n])=>`<div class="row"><div class="ic">📍</div><div><div>${esc(a)}${sub[a]?`<span style="font-size:12px;color:var(--mute);margin-left:6px">${Object.entries(sub[a]).sort((x,y)=>y[1]-x[1]).map(([t,k])=>esc(t)+k).join('・')}</span>`:''}</div><div class="bar"><div style="width:${n/amx*100}%;background:var(--green)"></div></div></div><div class="amt">${n}軒</div></div>`).join('') : emptyHTML('📍','お客さまを登録すると表示されます');
 }
 $('#cSearch').oninput = renderCust;
 $('#cAdd').onclick = () => openCustomer(null);
@@ -1304,10 +1377,13 @@ function openCustomer(id, after){
     <label class="f">お名前 <span style="color:var(--red)">*</span></label><input id="fcName" value="${esc(c.name)}" placeholder="例：山田さん／〇〇食堂">
     <label class="f">連絡先 1</label><input id="fcPhone" type="tel" inputmode="tel" value="${esc(fixTel(c.phone))}" placeholder="例：090-1234-5678（携帯）">
     <label class="f">連絡先 2</label><input id="fcPhone2" type="tel" inputmode="tel" value="${esc(fixTel(c.phone2))}" placeholder="例：0548-22-1234（家の電話）">
-    <label class="f">地域</label><input id="fcArea" list="areaList" value="${esc(c.area||'')}" placeholder="例：吉田町"><datalist id="areaList">${areas.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
+    <label class="f">地域</label><input id="fcArea" list="areaList" value="${esc(c.area||'')}" placeholder="例：吉田町住吉2983-1（番地まで入れるとマップに出ます）"><datalist id="areaList">${areas.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
+    <div id="fcMap"></div>
     <label class="f">取引を始めた日</label><input id="fcSince" type="date" value="${esc(c.since||todayStr())}">
     <label class="f">メモ</label><textarea id="fcNote" rows="3" placeholder="例：おじさんから引き継ぎ／玄関前に置き配／火曜は不在">${esc(c.note||'')}</textarea>
     <div class="acts">${id?'<button class="btn gray" id="fcDel" style="flex:.6;color:var(--red)">削除</button>':''}<button class="btn gray" data-close>やめる</button><button class="btn pri" id="fcOk">保存</button></div>`);
+  let mapT; const paintMap = () => { if(!$('#fcArea') || !$('#fcMap')) return; const ad = fullAddr($('#fcArea').value); $('#fcMap').innerHTML = /\d/.test(ad) ? `<div class="hint" style="margin:6px 0 4px">📍 ${esc(ad)}　<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ad)}" target="_blank" rel="noopener">マップで開く</a></div><iframe src="https://maps.google.com/maps?q=${encodeURIComponent(ad)}&z=16&output=embed" style="width:100%;height:180px;border:0;border-radius:12px" loading="lazy"></iframe>` : ''; };
+  paintMap(); $('#fcArea').oninput = () => { clearTimeout(mapT); mapT = setTimeout(paintMap, 700); };
   $('#fcOk').onclick = () => {
     const name = $('#fcName').value.trim(); if(!name) return toast('お名前を入れてください');
     const nid = id || 'c'+uid();
