@@ -797,7 +797,7 @@ function renderPick(){
   $('#pickTitle').textContent = order ? '📝 どのお客さまの注文？' : '🚚 注文なしの販売（飛び込み・追加）';
   $('#pickHint').textContent = order ? 'よく注文があるお客さまほど上に出ます。✓ はこの日の注文が入っているお客さまです。' : '注文にないお客さまや、追加の販売はここから。✓ はこの日に登録済みのお客さまです。';
   const freq = custFrequency(), done = new Set(onDate(order?'orders':'sales', d).map(r=>r.customerId));
-  const list = custArr().filter(c => !q || (String(c.name)+(c.area||'')+(c.phone||'')).includes(q))
+  const list = custArr().filter(c => !q || (String(c.name)+(c.area||'')+telsOf(c).join(' ')+(c.note||'')).includes(q))
     .sort((a,b)=>(freq[b.id]||0)-(freq[a.id]||0) || String(a.name).localeCompare(String(b.name),'ja'));
   $('#cGrid').innerHTML = list.map(c => `<button class="cbtn ${done.has(c.id)?'done':''}" data-pick="${esc(c.id)}"><div class="n">${esc(c.name)}</div><div class="s">${esc(c.area||'')}${freq[c.id]?` ・ 90日で${freq[c.id]}回`:''}</div></button>`).join('')
     + `<button class="cbtn new" id="pickNew">＋ 新しいお客さま</button>`;
@@ -1282,11 +1282,11 @@ function renderRecon(){
    ========================================================= */
 function renderCust(){
   const q = $('#cSearch').value.trim(), all = custArr();
-  const list = all.filter(c => !q || (String(c.name)+(c.area||'')+(c.phone||'')).includes(q));
+  const list = all.filter(c => !q || (String(c.name)+(c.area||'')+telsOf(c).join(' ')+(c.note||'')).includes(q));
   $('#cCount').textContent = `${all.length}軒`;
   const ms = {}; inMonth('sales').forEach(r => ms[r.customerId] = (ms[r.customerId]||0) + num(r.total));
   const unpaid = {}; arr('sales').filter(isCredit).forEach(r => unpaid[r.customerId] = (unpaid[r.customerId]||0) + num(r.total));
-  $('#cList').innerHTML = list.length ? list.map(c => `<div class="li" data-cust="${esc(c.id)}" style="cursor:pointer"><div class="ic">🏠</div><div class="m"><div class="t">${esc(c.name)}${String(c.since||'').slice(0,7)===S.month?'<span class="tag g">新規</span>':''}${unpaid[c.id]?`<span class="tag r">未入金 ${yen(unpaid[c.id])}</span>`:''}</div><div class="sub">📍${esc(c.area||'地域未登録')}${c.phone?' ・ 📞'+esc(c.phone):''}</div></div><div class="a" style="font-size:13px">${ms[c.id]?yen(ms[c.id]):''}<small style="color:var(--mute)">${c.since?esc(String(c.since).replace(/-/g,'/'))+'〜':''}</small></div></div>`).join('') : emptyHTML('👥', all.length ? '見つかりませんでした' : 'まだ登録がありません');
+  $('#cList').innerHTML = list.length ? list.map(c => `<div class="li" data-cust="${esc(c.id)}" style="cursor:pointer"><div class="ic">🏠</div><div class="m"><div class="t">${esc(c.name)}${String(c.since||'').slice(0,7)===S.month?'<span class="tag g">新規</span>':''}${unpaid[c.id]?`<span class="tag r">未入金 ${yen(unpaid[c.id])}</span>`:''}</div><div class="sub">📍${esc(c.area||'地域未登録')}${telsOf(c).map(t=>' ・ 📞'+esc(t)).join('')}</div>${c.note?`<div class="sub" style="color:var(--sea)">📝 ${esc(c.note)}</div>`:''}</div><div class="a" style="font-size:13px">${ms[c.id]?yen(ms[c.id]):''}<small style="color:var(--mute)">${c.since?esc(String(c.since).replace(/-/g,'/'))+'〜':''}</small></div></div>`).join('') : emptyHTML('👥', all.length ? '見つかりませんでした' : 'まだ登録がありません');
   const ar = {}; all.forEach(c => { const a = c.area || '未登録'; ar[a] = (ar[a]||0) + 1; });
   const ae = Object.entries(ar).sort((a,b)=>b[1]-a[1]), amx = Math.max(1, ...ae.map(x=>x[1]));
   $('#areaRank').innerHTML = ae.length ? ae.map(([a,n])=>`<div class="row"><div class="ic">📍</div><div><div>${esc(a)}</div><div class="bar"><div style="width:${n/amx*100}%;background:var(--green)"></div></div></div><div class="amt">${n}軒</div></div>`).join('') : emptyHTML('📍','お客さまを登録すると表示されます');
@@ -1294,19 +1294,24 @@ function renderCust(){
 $('#cSearch').oninput = renderCust;
 $('#cAdd').onclick = () => openCustomer(null);
 $('#cList').onclick = e => { const li = e.target.closest('[data-cust]'); if(li) openCustomer(li.dataset.cust); };
+/* 電話番号：スプレッドシートで先頭の0が消えた番号を元に戻す（9〜10桁の数字だけで0始まりでないもの） */
+const fixTel = v => { const t = String(v==null?'':v).trim(); return /^[1-9]\d{8,9}$/.test(t) ? '0'+t : t; };
+const telsOf = c => [fixTel(c.phone), fixTel(c.phone2)].filter(Boolean);
 function openCustomer(id, after){
-  const c = id ? S.customers[id] : {name:'', phone:'', area:'', since:todayStr()};
+  const c = id ? S.customers[id] : {name:'', phone:'', phone2:'', area:'', note:'', since:todayStr()};
   const areas = [...new Set([...custArr().map(x=>x.area).filter(Boolean), ...AREA_DEFAULT])];
   openSheet(`<h3>${id?'お客さま情報の編集':'新しいお客さま'}</h3>
     <label class="f">お名前 <span style="color:var(--red)">*</span></label><input id="fcName" value="${esc(c.name)}" placeholder="例：山田さん／〇〇食堂">
-    <label class="f">連絡先</label><input id="fcPhone" type="tel" inputmode="tel" value="${esc(c.phone||'')}" placeholder="例：090-1234-5678">
+    <label class="f">連絡先 1</label><input id="fcPhone" type="tel" inputmode="tel" value="${esc(fixTel(c.phone))}" placeholder="例：090-1234-5678（携帯）">
+    <label class="f">連絡先 2</label><input id="fcPhone2" type="tel" inputmode="tel" value="${esc(fixTel(c.phone2))}" placeholder="例：0548-22-1234（家の電話）">
     <label class="f">地域</label><input id="fcArea" list="areaList" value="${esc(c.area||'')}" placeholder="例：吉田町"><datalist id="areaList">${areas.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
     <label class="f">取引を始めた日</label><input id="fcSince" type="date" value="${esc(c.since||todayStr())}">
+    <label class="f">メモ</label><textarea id="fcNote" rows="3" placeholder="例：おじさんから引き継ぎ／玄関前に置き配／火曜は不在">${esc(c.note||'')}</textarea>
     <div class="acts">${id?'<button class="btn gray" id="fcDel" style="flex:.6;color:var(--red)">削除</button>':''}<button class="btn gray" data-close>やめる</button><button class="btn pri" id="fcOk">保存</button></div>`);
   $('#fcOk').onclick = () => {
     const name = $('#fcName').value.trim(); if(!name) return toast('お名前を入れてください');
     const nid = id || 'c'+uid();
-    commit([up('customers', nid, {name, phone:$('#fcPhone').value.trim(), area:$('#fcArea').value.trim(), since:$('#fcSince').value||todayStr()})]);
+    commit([up('customers', nid, {...(id?c:{}), name, phone:fixTel($('#fcPhone').value), phone2:fixTel($('#fcPhone2').value), note:$('#fcNote').value.trim(), area:$('#fcArea').value.trim(), since:$('#fcSince').value||todayStr()})]);
     closeSheet(); toast(id ? '更新しました' : `${esc(san(name))}を登録しました`); if(after) after(nid);
   };
   if(id) $('#fcDel').onclick = () => confirmSheet(`「${esc(c.name)}」を削除しますか？`, 'これまでの販売記録は残ります。', () => { commit([del('customers', id)]); toast('削除しました'); });
@@ -1390,7 +1395,7 @@ function buildExport(kind){
   if(kind==='sales') return {name:`販売_${S.month}.csv`, csv: toCSV(['日付','曜日','お客さま','地域','品目','数量','単位','いつもの単価','販売単価','販売金額','値引き額','売り方','支払い','入金日','メモ'], inMonth('sales').sort(byDate).map(x=>[x.date,x.dow||dowOf(x.date),x.customerName,x.area,x.itemName,x.qty,x.unit,x.listPrice,x.unitPrice,x.total,x.discount,x.mode,x.pay,x.paidDate,x.note]))};
   if(kind==='purchases') return {name:`仕入れ_${S.month}.csv`, csv: toCSV(['日付','曜日','拠点','仕入先','品目','数量','単位','仕入単価(税抜)','仕入金額(税抜)','税率','税込金額','メモ'], inMonth('purchases').sort(byDate).map(x=>[x.date,x.dow||dowOf(x.date),x.base,x.supplierName,x.itemName,x.qty,x.unit,x.unitCost,x.total,(num(x.taxRate)||8)+'%',incOf(x),x.note]))};
   if(kind==='processes') return {name:`加工_${S.month}.csv`, csv: toCSV(['日付','原料','使った量','単位','できあがり','できた数','単位','メモ'], inMonth('processes').sort(byDate).map(x=>[x.date,x.fromItemName,x.fromQty,x.fromUnit,x.toItemName,x.toQty,x.toUnit,x.note]))};
-  if(kind==='customers') return {name:'お客さま一覧.csv', csv: toCSV(['お名前','連絡先','地域','取引開始日'], custArr().map(c=>[c.name,c.phone,c.area,c.since]))};
+  if(kind==='customers') return {name:'お客さま一覧.csv', csv: toCSV(['お名前','連絡先1','連絡先2','地域','メモ','取引開始日'], custArr().map(c=>[c.name,fixTel(c.phone),fixTel(c.phone2),c.area,c.note,c.since]))};
   return {name:'品目リスト.csv', csv: toCSV(['品目名','種類','単位','販売単価','前回仕入単価','扱い中'], itemsArr().map(i=>[i.name,i.cat,i.unit,i.price,i.lastCost||'',i.active===false?'休止':'扱い中']))};
 }
 $$('[data-exp]').forEach(b => b.onclick = async () => {

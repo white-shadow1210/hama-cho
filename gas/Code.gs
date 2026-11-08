@@ -23,7 +23,8 @@ const SCHEMA = {
     ['active','扱い中','b'],['lastCost','前回仕入単価','n'],['lastCostDate','前回仕入日','t'],['created','登録日','t'],
     ['packKg','1個の重さ(kg)','n'],['yieldPct','歩留まり目安(%)','n'],['rawItemId','原料ID','t'] ]},
   customers: { sheet: '顧客', cols: [
-    ['id','ID','t'],['name','お名前','t'],['phone','連絡先','t'],['area','地域','t'],['since','取引開始日','t'] ]},
+    ['id','ID','t'],['name','お名前','t'],['phone','連絡先','t'],['area','地域','t'],['since','取引開始日','t'],
+    ['phone2','連絡先2','t'],['note','メモ','t'] ]},
   purchases: { sheet: '仕入れ', cols: [
     ['id','ID','t'],['date','日付','t'],['dow','曜日','t'],['itemId','品目ID','t'],['itemName','品目','t'],
     ['qty','数量','n'],['unit','単位','t'],['unitCost','仕入単価(税抜)','n'],['total','仕入金額(税抜)','n'],['note','メモ','t'],['ts','登録時刻','n'],
@@ -178,6 +179,7 @@ function readAll(table) {
       if (c[2] === 'n') v = (v === '' || v === null) ? '' : Number(v);
       if (c[2] === 'b') v = !(v === false || v === 'FALSE' || v === 'false');
       if (c[2] === 't') v = (v === null || v === undefined) ? '' : String(v);
+      if (c[0] === 'phone' || c[0] === 'phone2') v = fixTel(v);
       o[c[0]] = v;
     });
     out.push(o);
@@ -202,8 +204,10 @@ function applyOp(op) {
     if (c[2] === 'b') return v === false || v === 'FALSE' ? false : true;
     return v === null || v === undefined ? '' : String(v);
   });
-  if (row) sh.getRange(row, 1, 1, values.length).setValues([values]);
-  else sh.appendRow(values);
+  // 文字の列は「書式なしテキスト」にしてから書く（電話番号の先頭の0が消えないように）
+  const r = row || sh.getLastRow() + 1;
+  def.cols.forEach(function (c, i) { if (c[2] === 't') sh.getRange(r, i + 1).setNumberFormat('@'); });
+  sh.getRange(r, 1, 1, values.length).setValues([values]);
 }
 
 function findRow(sh, id) {
@@ -280,4 +284,19 @@ function weeklyReport() {
   lines.push('◎ 先週はじめて売れた品目（旬のサイン）');
   lines.push('  ' + (fresh.length ? fresh.join('、') : 'なし'));
   MailApp.sendEmail(to, '【販売・仕入れ】先週のまとめ ' + from.slice(5) + '〜' + toD.slice(5), lines.join('\n'));
+}
+
+/* 電話番号の先頭の0がスプレッドシートで消えた場合に戻す（9〜10桁の数字で0始まりでないもの） */
+function fixTel(v) { const t = String(v == null ? '' : v).trim(); return /^[1-9]\d{8,9}$/.test(t) ? '0' + t : t; }
+
+/* 1回だけ実行：顧客シートの電話番号を直して、列をテキスト書式にする */
+function fixPhones() {
+  const def = SCHEMA.customers, sh = getSheet('customers');
+  if (sh.getLastRow() < 2) return;
+  def.cols.forEach(function (c, i) {
+    if (c[0] !== 'phone' && c[0] !== 'phone2') return;
+    const rg = sh.getRange(2, i + 1, sh.getLastRow() - 1, 1);
+    const vals = rg.getValues().map(function (r) { return [fixTel(r[0])]; });
+    rg.setNumberFormat('@').setValues(vals);
+  });
 }
