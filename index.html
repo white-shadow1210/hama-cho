@@ -331,7 +331,9 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
         <h2>🔪 加工を記録</h2>
         <div class="hint" style="margin-top:-6px">仕入れた魚を開き・切り身・パックなどにしたときに記録します。数の確認に使います。</div>
         <label class="f">日付</label><input type="date" id="pDate">
-        <label class="f">使った原料</label><select id="pFrom"></select>
+        <label class="f">使った原料</label>
+        <div id="pFromBuys"></div>
+        <select id="pFrom"></select>
         <div class="grid2">
           <div><label class="f">使った量</label><input type="number" inputmode="decimal" id="pFromQty" placeholder="0"></div>
           <div><label class="f">単位</label><input id="pFromUnit" disabled></div>
@@ -1264,7 +1266,9 @@ $('#bpBody').addEventListener('input', e => { const rid = e.target.dataset.extra
 /* process */
 let outs = [{k:uid(), itemId:'', qty:''}];
 function renderProcBase(){
-  fillSel($('#pFrom'), itemOptions(true,'原料を選ぶ'));
+  const dB = $('#pDate').value || todayStr(), bought = boughtFor(dB);
+  fillSel($('#pFrom'), (bought.length ? `<option value="">原料を選ぶ</option><optgroup label="📦 この日に仕入れたもの">${bought.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}（仕入れ ${fmtQ(x.qty)}${esc(x.unit)}）</option>`).join('')}</optgroup>` + itemOptions(true,'').replace(/^<option value="">[^<]*<\/option>/,'') : itemOptions(true,'原料を選ぶ')));
+  $('#pFromBuys').innerHTML = bought.length ? `<div class="hint" style="margin:0 0 6px">この日の仕入れからえらぶ（タップで原料と量が入ります）</div><div class="chips" style="margin-bottom:8px">${bought.map(x=>`<button class="chip ${x.left<=0?'':'on'}" data-pbuy="${esc(x.id)}" ${x.left<=0?'style="opacity:.5"':''}>${esc(x.name)} ${fmtQ(x.qty)}${esc(x.unit)}${x.left<=0?' ✓':x.used?` <small>のこり${fmtQ(x.left)}</small>`:''}</button>`).join('')}</div>` : `<div class="hint" style="margin:0 0 6px">この日の仕入れはまだありません。下から原料を選んでください。</div>`;
   const f = S.items[$('#pFrom').value]; $('#pFromUnit').value = f ? (f.unit||'') : '';
   $('#pOuts').innerHTML = outs.map(o => { const it=S.items[o.itemId]; return `<div class="grid3" data-o="${o.k}" style="grid-template-columns:1.6fr 1fr auto;align-items:center;margin-bottom:8px"><select data-of="itemId">${itemOptions(true,'商品を選ぶ')}</select><div class="step" style="border-radius:12px"><input data-of="qty" type="number" inputmode="decimal" value="${esc(o.qty)}" placeholder="数"><span class="u">${esc(it?it.unit||'':'')}</span></div>${outs.length>1?'<button class="btn del" data-orm>×</button>':'<span></span>'}</div>`; }).join('');
   $$('#pOuts [data-o]').forEach(row => { const o = outs.find(x=>x.k===row.dataset.o); row.querySelector('select').value = o.itemId; });
@@ -1362,7 +1366,22 @@ $('#plAdd').onclick = () => { plan.rows.push({k:uid(), itemId:'', qty:''}); rend
 $('#plRows').addEventListener('change', e => { const row = e.target.closest('[data-pr]'); if(!row || e.target.dataset.pf!=='itemId') return; plan.rows.find(x=>x.k===row.dataset.pr).itemId = e.target.value; updatePlan(); });
 $('#plRows').addEventListener('input', e => { const row = e.target.closest('[data-pr]'); if(!row || e.target.dataset.pf!=='qty') return; plan.rows.find(x=>x.k===row.dataset.pr).qty = e.target.value; updatePlan(); });
 $('#plRows').addEventListener('click', e => { if(!e.target.closest('[data-prm]')) return; const row = e.target.closest('[data-pr]'); plan.rows = plan.rows.filter(x=>x.k!==row.dataset.pr); renderPlan(); });
-$('#pFrom').onchange = () => { if($('#pFrom').value==='__new'){ $('#pFrom').value=''; openItem(null, id=>{ renderProc(); $('#pFrom').value=id; renderProc(); }); return; } renderProc(); };
+/* その日の仕入れ（品目ごと）と、加工にもう使った量 */
+function boughtFor(d){
+  const g = {};
+  onDate('purchases', d).forEach(r => { const it = S.items[r.itemId]; if(!it) return; const x = g[r.itemId] = g[r.itemId] || {id:r.itemId, name:it.name, unit:r.unit||it.unit||'', qty:0, used:0, sameUnit:(r.unit||'')===(it.unit||'')}; x.qty += num(r.qty); });
+  const skip = S.pEdit ? new Set(S.pEdit.ids) : new Set();
+  onDate('processes', d).forEach(r => { const x = g[r.fromItemId]; if(x && !skip.has(r.id)) x.used += num(r.fromQty); });
+  return Object.values(g).map(x => ({...x, qty:Math.round(x.qty*100)/100, left:Math.round((x.qty-x.used)*100)/100}));
+}
+function pickBuy(id){
+  const x = boughtFor($('#pDate').value || todayStr()).find(b=>b.id===id); if(!x) return;
+  $('#pFrom').value = id; renderProc();
+  if(x.sameUnit && x.left > 0) $('#pFromQty').value = x.left;
+  updateYield();
+}
+$('#pFromBuys').onclick = e => { const b = e.target.closest('[data-pbuy]'); if(b) pickBuy(b.dataset.pbuy); };
+$('#pFrom').onchange = () => { const id = $('#pFrom').value; if(id && id!=='__new' && !$('#pFromQty').value && boughtFor($('#pDate').value||todayStr()).some(b=>b.id===id)){ pickBuy(id); return; }  if($('#pFrom').value==='__new'){ $('#pFrom').value=''; openItem(null, id=>{ renderProc(); $('#pFrom').value=id; renderProc(); }); return; } renderProc(); };
 $('#pDate').onchange = () => { syncDateMonth($('#pDate').value); renderAll(); };
 $('#pAddOut').onclick = () => { outs.push({k:uid(), itemId:'', qty:''}); renderProc(); };
 $('#pOuts').addEventListener('change', e => { const row=e.target.closest('[data-o]'); if(!row||e.target.dataset.of!=='itemId') return; const o=outs.find(x=>x.k===row.dataset.o);
