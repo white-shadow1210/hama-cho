@@ -41,6 +41,9 @@ details.cl .ca{margin-left:auto;color:var(--navy2)}
 details.cl .cb{padding:2px 2px 12px}
 .tel{display:inline-block;color:var(--sea);font-weight:700;text-decoration:none;background:var(--sky);border-radius:99px;padding:4px 10px;margin:4px 4px 0 0}
 .tel.big{display:block;text-align:center;padding:12px;font-size:16px;margin:6px 0 0}
+.grp{font-weight:700;color:var(--navy);font-size:14px;margin:16px 0 8px;display:flex;gap:6px;align-items:center;border-bottom:1.5px solid var(--line);padding-bottom:4px}
+.grp small{font-weight:400;color:var(--mute)}
+.grp:first-child{margin-top:2px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .tile{position:relative;background:var(--beige);border:1.5px solid var(--line);border-radius:16px;padding:12px;cursor:pointer;display:flex;flex-direction:column;gap:4px;min-height:118px;transition:transform .08s}
 .tile:active{transform:scale(.97)}
@@ -288,7 +291,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
       <div class="card">
         <h2 id="pickTitle">🚚 どのお客さま？</h2>
         <input class="search" id="cPickSearch" placeholder="🔍 名前・地域で探す">
-        <div class="cgrid" id="cGrid"></div>
+        <div id="cGrid"></div>
         <div class="hint" id="pickHint"></div>
       </div>
       <div class="card"><h2 id="listTitle">📋 この日の販売</h2><div class="list" id="orderList"></div></div>
@@ -805,7 +808,7 @@ function paintRoute(d, q){
     <div id="rtLinks"></div>
     <h4 style="margin:16px 0 4px">＋ ほかのお客さまを足す</h4>
     <input class="search" id="rtQ" placeholder="🔍 名前・地域で探す" value="${esc(q)}">
-    <div>${others.slice(0,40).map(c=>`<div class="li" data-radd="${esc(c.id)}" style="cursor:pointer"><div class="ic">＋</div><div class="m"><div class="t">${esc(c.name)}</div><div class="sub">${esc(c.area||'住所未登録')}</div></div></div>`).join('')}</div>`);
+    <div>${grouped(others.slice(0,60), c=>c.area, c=>`<div class="li" data-radd="${esc(c.id)}" style="cursor:pointer"><div class="ic">＋</div><div class="m"><div class="t">${esc(c.name)}</div><div class="sub">${esc(c.area||'住所未登録')}</div></div></div>`, 'list')}</div>`);
   const sh = $('#sheet');
   sh.onclick = e => {
     const up_ = e.target.closest('[data-rup]'), dn = e.target.closest('[data-rdn]'), rm = e.target.closest('[data-rrm]'), ad = e.target.closest('[data-radd]');
@@ -890,14 +893,14 @@ function renderHomeOrders(t){
   const todo = ordersOf(onDate('orders', t)).filter(o=>o.lines[0].status!=='配達済').sort((a,b)=>String(a.lines[0].area||'').localeCompare(String(b.lines[0].area||''),'ja'));
   const doneN = ordersOf(onDate('orders', t)).length - todo.length;
   $('#hdSum').textContent = todo.length ? `残り${todo.length}件` : (doneN ? '全部おわり 🎉' : '');
-  $('#hdList').innerHTML = todo.length ? todo.map(o => `<div class="li"><div class="ic">📦</div><div class="m"><div class="t">${esc(o.customerName)}</div><div class="sub">${esc(o.lines[0].area||'')}${o.lines[0].area?' ・ ':''}${linesText(o)}</div></div><div class="a">${yen(o.total)}</div><button class="btn pri" data-hdeliver="${esc(o.id)}" style="margin:0;padding:11px 14px;font-size:14px;width:auto;box-shadow:none">配達する</button></div>`).join('')
+  $('#hdList').innerHTML = todo.length ? orderTiles(todo, 'due')
     : emptyHTML(doneN?'🎉':'📭', doneN ? '今日の注文はすべて配達済みです' : '今日の配達注文はありません');
   const d1 = addDays(t,1), tm = ordersOf(onDate('orders', d1)), needs = planNeeds(d1);
   $('#htSum').textContent = tm.length ? `${tm.length}件・${yen(sum(tm))}` : '';
   $('#htBody').innerHTML = tm.length ? `<div class="hint" style="margin:0 0 6px">${tm.map(o=>esc(san(o.customerName))).join('、')}</div>` + (needs.length ? `<div class="hint" style="margin:0">仕入れの目安：</div><div style="line-height:1.9">${needs.join('<br>')}</div>` : '')
     : `<div class="hint" style="margin:0">明日の注文はまだありません。前日までに受けた注文を「📝 注文を受ける」から入れておくと、仕入れの目安が出ます。</div>`;
 }
-$('#hdList').onclick = e => { const b = e.target.closest('[data-hdeliver]'); if(!b) return; S.sellMode='deliver'; $('#sDate').value=todayStr(); goView('sell'); startDeliver(b.dataset.hdeliver); };
+
 $('#hNewOrder').onclick = () => { S.sellMode='order'; $('#sDate').value=addDays(todayStr(),1); S.cart=null; goView('sell'); };
 $('#hSell').onclick = () => { S.sellMode='deliver'; $('#sDate').value=todayStr(); S.cart=null; goView('sell'); };
 $('#hTomorrow').onclick = () => { S.sellMode='order'; $('#sDate').value=addDays(todayStr(),1); S.cart=null; goView('sell'); };
@@ -924,6 +927,44 @@ function renderSell(){
   inCart ? renderCart() : renderPick();
 }
 const linesText = o => o.lines.map(l=>`${esc(l.itemName)} ${fmtQ(l.qty)}${esc(l.unit||'')}`).join('、');
+/* ---- 地域ごとにまとめて表示 ---- */
+const AREA_ORDER = ['牧之原市','吉田町','その他・未設定'];
+const custArea = (cid, fallback) => (S.customers[cid] && S.customers[cid].area) || fallback || '';
+function grouped(items, areaOf, render, cls='tiles', unit='軒'){
+  const g = {}; items.forEach(x => (g[bigArea(areaOf(x))] = g[bigArea(areaOf(x))] || []).push(x));
+  return AREA_ORDER.filter(a=>g[a]).map(a=>`<div class="grp">📍 ${a} <small>${g[a].length}${unit}</small></div><div class="${cls}">${g[a].map(render).join('')}</div>`).join('');
+}
+const byTown = (a,b) => townOf(a).localeCompare(townOf(b),'ja');
+/* 注文・販売のタイル */
+const linesShort = o => o.lines.map(l=>`${esc(l.itemName)} ${fmtQ(l.qty)}${esc(l.unit||'')}`).join('・');
+function orderTile(o, kind){
+  const dn = o.lines[0].status==='配達済', ar = custArea(o.lines[0].customerId, o.lines[0].area);
+  const tags = kind==='sale' ? (isCredit(o)?'<span class="tag r">掛け</span>':'')+(o.pay==='入金済'?'<span class="tag g">入金済</span>':'') : (dn?'<span class="tag g">配達済</span>':'');
+  return `<div class="tile ${dn&&kind!=='sale'?'zero':''}" data-ot="${kind}:${esc(o.id)}">${tags?`<div class="tb">${tags}</div>`:''}<div class="ti">${kind==='sale'?'🏠':kind==='order'?'📝':'📦'}</div><div class="tn">${esc(o.customerName)}</div><div class="ts">${ar?'📍'+esc(townOf(ar)||ar)+'<br>':''}${linesShort(o)}</div><div class="tv">${yen(o.total)}</div></div>`;
+}
+const orderTiles = (os, kind) => grouped(os, o=>custArea(o.lines[0].customerId, o.lines[0].area), o=>orderTile(o, kind), 'tiles', '件');
+function openOrderSheet(kind, id){
+  const isSale = kind==='sale', rows = isSale ? arr('sales').filter(r=>(r.orderId||r.id)===id) : arr('orders').filter(r=>r.orderId===id);
+  if(!rows.length) return;
+  const o = ordersOf(rows)[0], c = S.customers[rows[0].customerId] || {}, dn = rows[0].status==='配達済';
+  const body = `<div class="conf-meta" style="margin-top:-4px">${isSale?'販売日':'配達日'} ${dayLabel(rows[0].date)}${c.area?' ・ 📍'+esc(c.area):''}</div>`
+    + rows.map(l=>`<div class="conf-line"><div>${esc(l.itemName)}<div class="q">${fmtQ(l.qty)}${esc(l.unit||'')} × ${yen(l.unitPrice)}${l.mode&&l.mode!=='いつも'?` <span class="tag o">${esc(l.mode)}</span>`:''}</div></div><div class="p">${yen(l.total)}</div></div>`).join('')
+    + `<div class="conf-total"><span>合計</span><b>${yen(o.total)}</b></div>`
+    + (isSale ? `<div class="conf-pay ${isCredit(o)?'credit':'cash'}">${isCredit(o)?'📒 掛け（未入金）':o.pay==='入金済'?'✅ 入金済':'💴 現金・受け取り済み'}</div>` : (dn?'<div class="note ok">✅ 配達済みです</div>':''))
+    + (rows[0].note?`<div class="hint">📝 ${esc(rows[0].note)}</div>`:'');
+  const tels = telsOf(c).map(t=>({label:`📞 ${esc(t)} に電話する`, href:telHref(t)}));
+  const acts = isSale ? [
+      {label:'✏️ 編集', cls:'pri', fn:()=>startEditSale(id)},
+      ...tels,
+      {label:'🗑 削除', cls:'red', fn:()=>guardClosed(rows[0].date, () => confirmSheet(`${esc(san(o.customerName))}の販売を削除しますか？`, `${rows.length}品・${yen(o.total)}`, () => { commit(rows.map(l=>del('sales', l.id))); toast('削除しました'); }))} ]
+    : [ ...(dn?[]:[{label:'🚚 配達する', cls:'pri', fn:()=>{ if(S.view!=='sell'){ S.sellMode='deliver'; $('#sDate').value=rows[0].date; goView('sell'); } startDeliver(id); }}]),
+      ...(dn?[]:[{label:'✏️ 編集', cls:dn?'pri':'sub', fn:()=>{ if(S.view!=='sell') goView('sell'); startEditOrder(id); }}]),
+      ...tels,
+      {label:'🗑 削除', cls:'red', fn:()=>confirmSheet(`${esc(san(o.customerName))}の注文を削除しますか？`, `${rows.length}品・${yen(o.total)}`, () => { commit(rows.map(l=>del('orders', l.id))); toast('削除しました'); })} ];
+  actionSheet(`${isSale?'🏠':'📝'} ${esc(san(o.customerName))}`, body, acts);
+}
+document.addEventListener('click', e => { const t = e.target.closest('[data-ot]'); if(!t) return; const [k, id] = t.dataset.ot.split(':'); openOrderSheet(k, id); });
+
 function renderPick(){
   const order = S.sellMode==='order';
   const d = $('#sDate').value || todayStr(), q = $('#cPickSearch').value.trim(), w = dayWord(d);
@@ -936,18 +977,17 @@ function renderPick(){
   const freq = custFrequency(), done = new Set(onDate(order?'orders':'sales', d).map(r=>r.customerId));
   const list = custArr().filter(c => !q || (String(c.name)+(c.area||'')+telsOf(c).join(' ')+(c.note||'')).includes(q))
     .sort((a,b)=>(freq[b.id]||0)-(freq[a.id]||0) || String(a.name).localeCompare(String(b.name),'ja'));
-  $('#cGrid').innerHTML = list.map(c => `<button class="cbtn ${done.has(c.id)?'done':''}" data-pick="${esc(c.id)}"><div class="n">${esc(c.name)}</div><div class="s">${esc(c.area||'')}${freq[c.id]?` ・ 90日で${freq[c.id]}回`:''}</div></button>`).join('')
-    + `<button class="cbtn new" id="pickNew">＋ 新しいお客さま</button>`;
+  $('#cGrid').innerHTML = `<button class="cbtn new" id="pickNew" style="width:100%;min-height:50px;margin-bottom:4px">＋ 新しいお客さま</button>` + (list.length ? grouped(list, c=>c.area, c => `<button class="cbtn ${done.has(c.id)?'done':''}" data-pick="${esc(c.id)}"><div class="n">${esc(c.name)}</div><div class="s">${esc(townOf(c.area)||c.area||'')}${freq[c.id]?` ・ 90日で${freq[c.id]}回`:''}</div></button>`, 'cgrid') : '<div class="hint">見つかりませんでした</div>');
   $('#listTitle').innerHTML = `${order?'📋 この日の注文':'📋 この日の販売'} <small>${md(d)}${w?'・'+w:''}</small>`;
   if(order){
     const os = ordersOf(onDate('orders', d));
-    $('#orderList').innerHTML = os.length ? os.map(o => { const dn = o.lines[0].status==='配達済'; return `<div class="li"><div class="ic">📝</div><div class="m"><div class="t">${esc(o.customerName)}${dn?'<span class="tag g">配達済</span>':''}</div><div class="sub">${linesText(o)}</div></div><div class="a">${yen(o.total)}</div>${dn?'':`<button class="btn sub" data-editorder="${esc(o.id)}" style="padding:8px 10px;font-size:13px">編集</button>`}<button class="btn del" data-delord="${esc(o.id)}">削除</button></div>`; }).join('')
-      + `<div class="li" style="border-top:2px solid var(--line)"><div class="m"><div class="t">合計 ${os.length}軒</div></div><div class="a" style="color:var(--navy2);font-size:18px">${yen(sum(os))}</div></div>`
+    $('#orderList').innerHTML = os.length ? orderTiles(os, 'order')
+      + `<div class="li" style="border-top:2px solid var(--line);margin-top:10px"><div class="m"><div class="t">合計 ${os.length}軒</div></div><div class="a" style="color:var(--navy2);font-size:18px">${yen(sum(os))}</div></div>`
       : emptyHTML('📝','この日の注文はまだありません。お客さまをタップして入れましょう');
   } else {
     const orders = ordersOf(onDate('sales', d));
-    $('#orderList').innerHTML = orders.length ? orders.map(o => `<div class="li"><div class="ic">🏠</div><div class="m"><div class="t">${esc(o.customerName)}${isCredit(o)?'<span class="tag r">掛け</span>':''}${o.pay==='入金済'?'<span class="tag g">入金済</span>':''}</div><div class="sub">${linesText(o)}</div></div><div class="a">${yen(o.total)}${o.discount?`<small>サービス −${yen(o.discount)}</small>`:''}</div><button class="btn sub" data-editsale="${esc(o.id)}" style="padding:8px 10px;font-size:13px">編集</button><button class="btn del" data-delorder="${esc(o.id)}">削除</button></div>`).join('')
-      + `<div class="li" style="border-top:2px solid var(--line)"><div class="m"><div class="t">合計 ${orders.length}軒</div></div><div class="a" style="color:var(--navy2);font-size:18px">${yen(sum(orders))}</div></div>`
+    $('#orderList').innerHTML = orders.length ? orderTiles(orders, 'sale')
+      + `<div class="li" style="border-top:2px solid var(--line);margin-top:10px"><div class="m"><div class="t">合計 ${orders.length}軒</div></div><div class="a" style="color:var(--navy2);font-size:18px">${yen(sum(orders))}</div></div>`
       : emptyHTML('🚚','この日の販売はまだありません');
     renderDue(d);
   }
@@ -959,10 +999,10 @@ function renderDue(d){
   const done = all.filter(o => st(o)==='配達済');
   $('#dueSum').textContent = all.length ? `残り${todo.length}件 / 全${all.length}件` : '';
   $('#dueList').innerHTML = !all.length ? emptyHTML('📭','この日の注文はありません。前日までに受けた注文は「📝 注文を受ける」から入れられます')
-    : (todo.length ? todo.map(o => `<div class="li"><div class="ic">📦</div><div class="m"><div class="t">${esc(o.customerName)}</div><div class="sub">${esc(area(o))}${area(o)?' ・ ':''}${linesText(o)}</div></div><div class="a">${yen(o.total)}</div><button class="btn pri" data-deliver="${esc(o.id)}" style="margin:0;padding:11px 14px;font-size:14px;width:auto;box-shadow:none">配達する</button></div><div class="li" style="padding-top:0;border-top:0;justify-content:flex-end;gap:8px"><button class="btn sub" data-editorder="${esc(o.id)}" style="padding:7px 12px;font-size:13px;width:auto">✏️ 編集</button><button class="btn del" data-delord="${esc(o.id)}">削除</button></div>`).join('') : emptyHTML('🎉','この日の注文はすべて配達済みです'))
+    : (todo.length ? orderTiles(todo, 'due') : emptyHTML('🎉','この日の注文はすべて配達済みです'))
     + (done.length ? `<div class="hint">配達済 ${done.length}件：${done.map(o=>esc(o.customerName)).join('、')}</div>` : '');
 }
-$('#dueList').onclick = e => { const b = e.target.closest('[data-deliver]'); if(b){ startDeliver(b.dataset.deliver); return; } $('#orderList').onclick(e); };
+
 $('#cGrid').onclick = e => {
   if(e.target.closest('#pickNew')) { openCustomer(null, id => startCart(id)); return; }
   const b = e.target.closest('[data-pick]'); if(b) startCart(b.dataset.pick);
@@ -1486,7 +1526,7 @@ function renderCust(){
   $('#cCount').textContent = `${all.length}軒`;
   const ms = {}; inMonth('sales').forEach(r => ms[r.customerId] = (ms[r.customerId]||0) + num(r.total));
   const unpaid = {}; arr('sales').filter(isCredit).forEach(r => unpaid[r.customerId] = (unpaid[r.customerId]||0) + num(r.total));
-  $('#cList').innerHTML = list.length ? `<div class="tiles">${list.map(c => { const nw = String(c.since||'').slice(0,7)===S.month; return `<div class="tile" data-cust="${esc(c.id)}">${(nw||unpaid[c.id])?`<div class="tb">${unpaid[c.id]?'<span class="tag r">未入金</span>':''}${nw?'<span class="tag g">新規</span>':''}</div>`:''}<div class="ti">🏠</div><div class="tn">${esc(c.name)}</div><div class="ts">📍${esc(c.area||'地域未登録')}${telsOf(c).length?'<br>📞'+esc(telsOf(c)[0]):''}</div>${ms[c.id]?`<div class="tv" style="font-size:15px">${yen(ms[c.id])}<small style="font-size:11px;font-weight:400;color:var(--mute)"> 今月</small></div>`:''}</div>`; }).join('')}</div>` : emptyHTML('👥', all.length ? '見つかりませんでした' : 'まだ登録がありません');
+  $('#cList').innerHTML = list.length ? grouped(list.slice().sort((a,b)=>byTown(a.area,b.area) || String(a.name).localeCompare(String(b.name),'ja')), c=>c.area, c => { const nw = String(c.since||'').slice(0,7)===S.month; return `<div class="tile" data-cust="${esc(c.id)}">${(nw||unpaid[c.id])?`<div class="tb">${unpaid[c.id]?'<span class="tag r">未入金</span>':''}${nw?'<span class="tag g">新規</span>':''}</div>`:''}<div class="ti">🏠</div><div class="tn">${esc(c.name)}</div><div class="ts">📍${esc(townOf(c.area)||c.area||'地域未登録')}${telsOf(c).length?'<br>📞'+esc(telsOf(c)[0]):''}</div>${ms[c.id]?`<div class="tv" style="font-size:15px">${yen(ms[c.id])}<small style="font-size:11px;font-weight:400;color:var(--mute)"> 今月</small></div>`:''}</div>`; }) : emptyHTML('👥', all.length ? '見つかりませんでした' : 'まだ登録がありません');
   const ar = {}, sub = {}; all.forEach(c => { const a = bigArea(c.area); ar[a] = (ar[a]||0) + 1; const t = townOf(c.area); if(t){ sub[a] = sub[a]||{}; sub[a][t] = (sub[a][t]||0)+1; } });
   const ae = Object.entries(ar).sort((a,b)=>(a[0]==='その他・未設定')-(b[0]==='その他・未設定') || b[1]-a[1]), amx = Math.max(1, ...ae.map(x=>x[1]));
   $('#areaRank').innerHTML = ae.length ? ae.map(([a,n])=>`<div class="row"><div class="ic">📍</div><div><div>${esc(a)}${sub[a]?`<span style="font-size:12px;color:var(--mute);margin-left:6px">${Object.entries(sub[a]).sort((x,y)=>y[1]-x[1]).map(([t,k])=>esc(t)+k).join('・')}</span>`:''}</div><div class="bar"><div style="width:${n/amx*100}%;background:var(--green)"></div></div></div><div class="amt">${n}軒</div></div>`).join('') : emptyHTML('📍','お客さまを登録すると表示されます');
