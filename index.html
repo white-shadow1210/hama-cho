@@ -319,7 +319,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
 
   <!-- ===== BUY / PROCESS / RECON ===== -->
   <section id="v-buy" class="hidden">
-    <div class="seg" id="buyTabs"><button data-t="buy" class="on">🛒 仕入れ</button><button data-t="proc">🔪 加工</button><button data-t="recon">⚖️ 数の確認</button></div>
+    <div class="seg" id="buyTabs"><button data-t="buy" class="on">🛒 仕入れ</button><button data-t="proc">📤 持ち出し</button><button data-t="recon">📊 数の確認</button></div>
 
     <div id="t-buy">
       <div class="card" id="buyPlan"><h2>📦 注文から見る仕入れの目安 <small id="bpLabel"></small></h2><div id="bpBody"></div></div>
@@ -345,6 +345,19 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
     </div>
 
     <div id="t-proc" class="hidden">
+      <div class="card">
+        <h2>📤 持ち出しを記録</h2>
+        <div class="hint" style="margin-top:-6px">配達に持っていく商品（パック）と数を入れます。売れた数は販売の記録から自動で数えます。</div>
+        <div class="datebar" style="margin:6px 0 0"><button class="btn sub" id="kPrev" style="width:auto;margin:0;padding:10px 14px">‹</button><input type="date" id="kDate"><button class="btn sub" id="kNext" style="width:auto;margin:0;padding:10px 14px">›</button></div>
+        <div id="kLeft"></div>
+        <input class="search" id="kSearch" placeholder="🔍 商品名で探す" style="margin-top:10px">
+        <div class="chips" id="kCloud"></div>
+        <div id="kLines" style="margin-top:8px"></div>
+        <label class="f">メモ（任意）</label><input id="kNote" placeholder="例：午前の便">
+        <button class="btn pri" id="kSave">持ち出しを記録する</button>
+      </div>
+      <div class="card"><h2>📋 この日の持ち出しと売れた数 <small id="kSum"></small></h2><div id="kList"></div></div>
+      <div id="legacyProc" class="hidden">
       <div class="card">
         <h2>🔪 加工を記録</h2>
         <div class="hint" style="margin-top:-6px">仕入れた魚を開き・切り身・パックなどにしたときに記録します。数の確認に使います。</div>
@@ -378,16 +391,16 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
         <label class="f">歩留まり（%）</label><input id="plYield" type="number" inputmode="decimal" placeholder="例：65">
         <div id="plResult" style="margin-top:10px"></div>
       </div>
+      </div>
     </div>
 
     <div id="t-recon" class="hidden">
       <div class="card">
-        <h2>⚖️ 数の確認（辻褄チェック）</h2>
+        <h2>📊 数の確認（仕入れ・持ち出し・売れた数）</h2>
         <div class="seg" id="reconTabs"><button data-p="day" class="on">この日</button><button data-p="month">この月</button></div>
         <div class="datebar" id="reconDateBar"><span style="font-size:13px;color:var(--mute)">日付</span><input type="date" id="rDate"></div>
-        <div class="legend" style="margin:0 0 6px"><span><i style="background:var(--sky)"></i>入ってきた数</span><span><i style="background:#fff1df"></i>出ていった数</span></div>
         <div id="reconList"></div>
-        <div class="hint">計算：仕入れ＋加工でできた数 −（加工に使った数＋販売した数）＝ 残り。<br>✅ぴったり ／ 📦残りあり（在庫・ロス） ／ ⚠️マイナス（入力もれの可能性）<br>前の日からの持ち越し在庫は含みません。</div>
+        <div class="hint">売れた率 ＝ 売れた数 ÷ 持ち出した数。残りは持ち帰り（次の日の持ち出しに入れられます）。<br>仕入れに対する売上 ＝ 売上 ÷ 仕入れ（税込）。100%を超えると仕入れ代を回収できています。</div>
       </div>
     </div>
   </section>
@@ -463,7 +476,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
 <nav>
   <button data-v="home" class="on"><span class="i">🏠</span>ホーム</button>
   <button data-v="sell"><span class="i">🚚</span>販売</button>
-  <button data-v="buy"><span class="i">🛒</span>仕入・加工</button>
+  <button data-v="buy"><span class="i">🛒</span>仕入・持出</button>
   <button data-v="cust"><span class="i">👥</span>顧客</button>
   <button data-v="more"><span class="i">⚙️</span>管理</button>
 </nav>
@@ -549,7 +562,7 @@ const STARTER = [
  ['イカフライ','惣菜・珍味','パック',1000,'',''],['ひとくちイカフライ','惣菜・珍味','パック',700,'',''],
  ['はんぺん','惣菜・珍味','パック',500,'',''],['おでん具','惣菜・珍味','パック',1000,'','']
 ];
-const TABLES = ['items','customers','purchases','processes','sales','orders','closings','suppliers','stocks'];
+const TABLES = ['items','customers','purchases','processes','sales','orders','closings','suppliers','stocks','carries'];
 
 document.title = APP_NAME; $('#appName').textContent = '🐟 ' + APP_NAME;
 function toast(msg, ms=2000){ const t=$('#toast'); t.innerHTML=msg; t.classList.add('on'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('on'),ms); }
@@ -562,7 +575,7 @@ const LS = {
 const K_CFG='sakana-cfg-v2', K_DATA='sakana-data-v2', K_OUT='sakana-outbox-v2';
 
 /* ---------- state ---------- */
-const S = { items:{}, customers:{}, purchases:{}, processes:{}, sales:{}, orders:{}, closings:{}, suppliers:{}, stocks:{}, pendingAdd:'', bBase:'', bSupp:'', closeDate:'', sellMode:'deliver',
+const S = { items:{}, customers:{}, purchases:{}, processes:{}, sales:{}, orders:{}, closings:{}, suppliers:{}, stocks:{}, carries:{}, kLines:[], pendingAdd:'', bBase:'', bSupp:'', closeDate:'', sellMode:'deliver',
   month: todayStr().slice(0,7), view:'home', buyTab:'buy', reconP:'day',
   cart:null, sync:'demo', syncErr:'' };
 let cfg = LS.get(K_CFG, {url:'', key:''});
@@ -846,6 +859,7 @@ function renderClose(){
   const al = [];
   if(pend.length) al.push(`<div class="note err">📦 まだ配達していない注文が <b>${pend.length}件</b> あります（${pend.map(o=>esc(san(o.customerName))).join('、')}）</div>`);
   if(credit.length) al.push(`<div class="note info">📒 掛け（未入金）が <b>${credit.length}件・${yen(sum(credit))}</b> あります</div>`);
+  { const ca = carryAgg(d).filter(x=>x.carried>0); if(ca.length){ const tc = ca.reduce((t,x)=>t+x.carried,0), ts = ca.reduce((t,x)=>t+Math.min(x.sold,x.carried),0); al.push(`<div class="note info">📤 持ち出し ${fmtQ(tc)}点 → 売れた ${fmtQ(ts)}点（${Math.round(ts/tc*100)}%）・持ち帰り ${fmtQ(tc-ts)}点</div>`); } }
   if(noPrice.length) al.push(`<div class="note err">⚠️ 単価が0円の販売が <b>${noPrice.length}行</b> あります（${[...new Set(noPrice.map(r=>esc(r.itemName)))].join('、')}）</div>`);
   $('#clAlerts').innerHTML = al.join('');
   $('#clCnt').textContent = ords.length ? `${ords.length}軒` : '';
@@ -1082,8 +1096,8 @@ function renderCart(){
   $('#favList').innerHTML = favs.map(f => { const it=S.items[f.itemId], L=f.last; return `<button class="favbtn ${inCart.has(f.itemId)?'in':''}" data-fav="${esc(f.itemId)}"><div class="n">${icon(it)} ${esc(it.name)}</div><div class="s">前回 ${fmtQ(L.qty)}${esc(L.unit||it.unit||'')}・${yen(L.unitPrice)}${L.mode&&L.mode!=='いつも'?'（'+esc(L.mode)+'）':''} ・ ${f.n}回</div></button>`; }).join('');
   const q = $('#itemSearch').value.trim();
   const items = activeItems().filter(i => !q || String(i.name).includes(q));
-  const stk = {}; stockItems().forEach(x => stk[x.it.id] = x.qty);
-  $('#itemCloud').innerHTML = items.map(i => `<button class="chip ${inCart.has(i.id)?'on':''}" data-add="${esc(i.id)}">${icon(i)} ${esc(i.name)}${i.price?` <span style="opacity:.7;font-size:12px">${yen(i.price)}</span>`:''}${stk[i.id]>0?` <span class="tag g">在庫${fmtQ(stk[i.id])}</span>`:''}</button>`).join('') + `<button class="chip" id="newItemFromCart" style="border-style:dashed;color:var(--sea)">＋ 新しい品目</button>`;
+  const stk = carryLeft($('#sDate').value || todayStr());
+  $('#itemCloud').innerHTML = items.map(i => `<button class="chip ${inCart.has(i.id)?'on':''}" data-add="${esc(i.id)}">${icon(i)} ${esc(i.name)}${i.price?` <span style="opacity:.7;font-size:12px">${yen(i.price)}</span>`:''}${stk[i.id]!=null?` <span class="tag ${stk[i.id]>0?'g':'r'}">${stk[i.id]>0?'残'+fmtQ(stk[i.id]):'持出分なし'}</span>`:''}</button>`).join('') + `<button class="chip" id="newItemFromCart" style="border-style:dashed;color:var(--sea)">＋ 新しい品目</button>`;
   $('#cartLines').innerHTML = S.cart.lines.length ? S.cart.lines.map(l => {
     const it = S.items[l.itemId] || {name:'?'}, k = lineCalc(l), u = esc(it.unit||'');
     return `<div class="line" data-k="${l.k}">
@@ -1166,7 +1180,7 @@ $('#cartConfirm').onclick = () => {
    BUY / PROCESS / RECON
    ========================================================= */
 $('#buyTabs').onclick = e => { const b=e.target.closest('[data-t]'); if(!b) return; S.buyTab=b.dataset.t; $$('#buyTabs button').forEach(x=>x.classList.toggle('on',x===b)); renderBuyArea(); };
-function renderBuyArea(){ ['buy','proc','recon'].forEach(t=>$('#t-'+t).classList.toggle('hidden', t!==S.buyTab)); if(S.buyTab==='buy') renderBuy(); if(S.buyTab==='proc') renderProc(); if(S.buyTab==='recon') renderRecon(); }
+function renderBuyArea(){ ['buy','proc','recon'].forEach(t=>$('#t-'+t).classList.toggle('hidden', t!==S.buyTab)); if(S.buyTab==='buy') renderBuy(); if(S.buyTab==='proc') renderProc(); if(S.buyTab==='recon') renderRecon(); updateBar(); }
 function itemOptions(withNew, placeholder='品目を選ぶ'){
   const a = activeItems();
   return `<option value="">${placeholder}</option>` + Object.keys(CATS).map(c => { const g = a.filter(i=>(i.cat||'鮮魚')===c); return g.length ? `<optgroup label="${CATS[c]} ${c}">${g.map(i=>`<option value="${esc(i.id)}">${esc(i.name)}（${esc(i.unit||'')}）</option>`).join('')}</optgroup>` : ''; }).join('') + (withNew ? `<option value="__new">＋ 新しい品目を追加…</option>` : '');
@@ -1336,7 +1350,79 @@ function renderProcBase(){
   const batches = Object.values(g).sort((a,b)=>num(b[0].ts)-num(a[0].ts));
   $('#pList').innerHTML = batches.length ? `<div class="tiles">${batches.map(b => { const outsB = b.filter(r=>r.toItemId), net = netKg(b), xs = insOf(b), fq = xs.reduce((t,x)=>t+x.qty,0), yp = net && fq && xs.every(x=>x.unit==='kg') ? Math.round(net/fq*100) : 0; return `<div class="tile ${yp>100?'warn':''}" data-batch="${esc(b[0].batchId)}">${yp?`<div class="tb"><span class="tag ${yp>100?'o':'g'}">歩留${yp}%</span></div>`:''}<div class="ti">🔪</div><div class="tn">${xs.map(x=>esc(x.name)).join('・')}</div><div class="ts">${xs.map(x=>fmtQ(x.qty)+esc(x.unit)).join('・')} →</div><div class="tv" style="font-size:15px">${outsB.map(r=>`${esc(r.toItemName)} ${fmtQ(r.toQty)}${esc(r.toUnit||'')}`).join('<br>')}</div></div>`; }).join('')}</div>` : emptyHTML('🔪','この日の加工はまだありません');
 }
-function renderProc(){ renderProcBase(); updateYield(); renderPlan(); renderStock(); }
+function renderProc(){ renderCarry(); }
+/* ===== 持ち出し ===== */
+$('#kDate').value = todayStr();
+const carryRows = d => onDate('carries', d);
+function carryAgg(d){
+  const g = {};
+  carryRows(d).forEach(r => { const x = g[r.itemId] = g[r.itemId] || {id:r.itemId, name:r.itemName, unit:r.unit||'', carried:0, sold:0}; x.carried += num(r.qty); });
+  onDate('sales', d).forEach(r => { const x = g[r.itemId] = g[r.itemId] || {id:r.itemId, name:r.itemName, unit:r.unit||'', carried:0, sold:0, nocarry:true}; x.sold += num(r.qty); });
+  return Object.values(g).map(x => ({...x, left: Math.round((x.carried-x.sold)*100)/100}));
+}
+function carryLeft(d){ const m = {}; carryAgg(d).filter(x=>x.carried>0).forEach(x => m[x.id] = x.left); return m; }
+function productItems(){
+  const raw = new Set(arr('items').map(i=>i.rawItemId).filter(Boolean));
+  const cnt = {}; const since = addDays(todayStr(), -90);
+  arr('sales').filter(r=>String(r.date)>=since).forEach(r => cnt[r.itemId] = (cnt[r.itemId]||0)+1);
+  arr('carries').forEach(r => cnt[r.itemId] = (cnt[r.itemId]||0)+1);
+  return activeItems().filter(i => !raw.has(i.id) && !/原料/.test(i.name)).sort((a,b)=>(cnt[b.id]||0)-(cnt[a.id]||0) || String(a.name).localeCompare(String(b.name),'ja'));
+}
+function lastLeftover(d){
+  const ds = [...new Set(arr('carries').map(r=>String(r.date)).filter(x=>x<d))].sort(); const pd = ds[ds.length-1]; if(!pd) return null;
+  const items = carryAgg(pd).filter(x=>x.carried>0 && x.left>0 && S.items[x.id]); return items.length ? {date:pd, items} : null;
+}
+function renderCarry(){
+  const d = $('#kDate').value || todayStr(), q = $('#kSearch').value.trim();
+  const lo = lastLeftover(d);
+  $('#kLeft').innerHTML = lo && !carryRows(d).length ? `<div class="note info" style="margin-top:10px">📦 前回（${md(lo.date)}）の持ち帰り：${lo.items.map(x=>`${esc(x.name)} ${fmtQ(x.left)}${esc(x.unit)}`).join('、')}<button class="btn sub" id="kAddLeft" style="margin:8px 0 0;width:100%">持ち帰り分をまとめて入れる</button></div>` : '';
+  if($('#kAddLeft')) $('#kAddLeft').onclick = () => { lo.items.forEach(x => addKLine(x.id, x.left)); renderCarry(); };
+  const list = productItems().filter(i => !q || String(i.name).includes(q)).slice(0, q?60:30);
+  $('#kCloud').innerHTML = list.map(i=>`<button class="chip" data-kadd="${esc(i.id)}">${icon(i)} ${esc(i.name)}</button>`).join('') + `<button class="chip" data-knew="1">＋ 新しい商品</button>`;
+  $('#kLines').innerHTML = S.kLines.length ? S.kLines.map((l,i)=>{ const it = S.items[l.itemId]; return `<div class="li"><div class="ic">${icon(it)}</div><div class="m"><div class="t">${esc(it?it.name:'')}</div></div><button class="btn sub" data-kd="${i}:-1" style="width:auto;margin:0;padding:8px 11px">−</button><input type="number" inputmode="decimal" data-kq="${i}" value="${esc(l.qty)}" style="width:54px;text-align:center;padding:8px 4px;font-size:17px;font-weight:700"><span class="hint" style="margin:0">${esc(it?it.unit||'':'')}</span><button class="btn sub" data-kd="${i}:1" style="width:auto;margin:0;padding:8px 11px">＋</button><button class="btn del" data-kx="${i}">×</button></div>`; }).join('') : '<div class="hint">上の商品をタップすると、ここに入ります（タップするたびに＋1）</div>';
+  $('#kSave').disabled = !S.kLines.length;
+  const ag = carryAgg(d).sort((a,b)=>(b.carried>0)-(a.carried>0) || String(a.name).localeCompare(String(b.name),'ja'));
+  const tc = ag.reduce((t,x)=>t+x.carried,0), ts = ag.filter(x=>x.carried>0).reduce((t,x)=>t+Math.min(x.sold,x.carried),0);
+  $('#kSum').textContent = `${md(d)}${dayWord(d)?'・'+dayWord(d):''}`;
+  $('#kList').innerHTML = ag.length ? `<div class="tiles">${ag.map(x=>{ const it = S.items[x.id]; const st = !x.carried ? `<span class="tag o">持ち出し記録なし</span>` : x.left<0 ? `<span class="tag o">${fmtQ(-x.left)}多く売れた</span>` : x.left===0 ? `<span class="tag g">売り切れ</span>` : '';
+      return `<div class="tile ${!x.carried||x.left<0?'warn':''}" data-kitem="${esc(x.id)}">${st?`<div class="tb">${st}</div>`:''}<div class="ti">${icon(it)}</div><div class="tn">${esc(x.name)}</div><div class="ts">持ち出し ${fmtQ(x.carried)} → 売れた ${fmtQ(x.sold)}</div><div class="tv">${x.carried?(x.left>0?`残り ${fmtQ(x.left)}`:'✅ 0'):'—'}<small style="font-size:12px;font-weight:400;color:var(--mute)"> ${esc(x.unit)}</small></div></div>`; }).join('')}</div>`
+      + (tc ? `<div class="li" style="border-top:2px solid var(--line);margin-top:10px"><div class="m"><div class="t">持ち出し ${fmtQ(tc)}点 → 売れた ${fmtQ(ts)}点</div><div class="sub">売れた率 ${Math.round(ts/tc*100)}% ・ 持ち帰り ${fmtQ(tc-ts)}点</div></div></div>` : '')
+    : emptyHTML('📤','この日の持ち出しはまだありません');
+}
+function addKLine(id, n){ const l = S.kLines.find(x=>x.itemId===id); if(l) l.qty = Math.round((num(l.qty)+num(n))*100)/100; else S.kLines.push({itemId:id, qty:num(n)||1}); }
+$('#kSearch').oninput = () => renderCarry();
+$('#kDate').onchange = () => { syncDateMonth($('#kDate').value); renderAll(); };
+$('#kPrev').onclick = () => { $('#kDate').value = addDays($('#kDate').value||todayStr(), -1); syncDateMonth($('#kDate').value); renderAll(); };
+$('#kNext').onclick = () => { $('#kDate').value = addDays($('#kDate').value||todayStr(), 1); syncDateMonth($('#kDate').value); renderAll(); };
+$('#kCloud').onclick = e => {
+  if(e.target.closest('[data-knew]')) { openItem(null, id => { addKLine(id, 1); renderCarry(); }, {cat:'切り身・刺身', unit:'パック'}); return; }
+  const b = e.target.closest('[data-kadd]'); if(!b) return; addKLine(b.dataset.kadd, 1); renderCarry();
+};
+$('#kLines').addEventListener('click', e => {
+  const dd = e.target.closest('[data-kd]'); if(dd){ const [i,n] = dd.dataset.kd.split(':').map(Number); const l = S.kLines[i]; l.qty = Math.max(0, Math.round((num(l.qty)+n)*100)/100); if(!l.qty) S.kLines.splice(i,1); renderCarry(); return; }
+  const x = e.target.closest('[data-kx]'); if(x){ S.kLines.splice(+x.dataset.kx,1); renderCarry(); }
+});
+$('#kLines').addEventListener('input', e => { const q = e.target.dataset.kq; if(q==null) return; S.kLines[+q].qty = e.target.value; });
+$('#kSave').onclick = () => {
+  const d = $('#kDate').value || todayStr(), ls = S.kLines.filter(l => S.items[l.itemId] && num(l.qty)>0);
+  if(!ls.length) return toast('商品と数を入れてください');
+  const ts = Date.now(), note = $('#kNote').value.trim();
+  commit(ls.map((l,i) => { const it = S.items[l.itemId]; return up('carries', uid(), {date:d, itemId:it.id, itemName:it.name, unit:it.unit||'', qty:num(l.qty), note, ts:ts+i}); }));
+  toast(`📤 ${ls.length}品の持ち出しを記録しました`); S.kLines = []; $('#kNote').value=''; $('#kSearch').value='';
+};
+$('#kList').onclick = e => {
+  const t = e.target.closest('[data-kitem]'); if(!t) return;
+  const d = $('#kDate').value || todayStr(), id = t.dataset.kitem, x = carryAgg(d).find(a=>a.id===id); if(!x) return;
+  const rows = carryRows(d).filter(r=>r.itemId===id), it = S.items[id] || {name:x.name, unit:x.unit};
+  const body = dl([['日付', dayLabel(d)], ['持ち出し', x.carried?`${fmtQ(x.carried)}${esc(x.unit)}`:'記録なし'], ['売れた', `${fmtQ(x.sold)}${esc(x.unit)}`], ['残り（持ち帰り）', x.carried?`${fmtQ(Math.max(0,x.left))}${esc(x.unit)}`:'']])
+    + (!x.carried ? '<div class="hint" style="color:var(--orange)">持ち出しの記録がない商品が売れています。持ち出しに入れ忘れか、前からあった分かもしれません。</div>' : x.left<0 ? '<div class="hint" style="color:var(--orange)">持ち出した数より多く売れています。持ち出しの数を確認してください。</div>' : '');
+  actionSheet(`${icon(S.items[id])} ${esc(x.name)}`, body, [
+    {label: x.carried ? '✏️ 持ち出しの数を編集' : '📤 持ち出しの数を入れる', cls:'pri', fn:() => {
+      openSheet(`<h3>${esc(x.name)} の持ち出し</h3><label class="f">持ち出した数（${esc(x.unit)}）</label><input id="kEd" type="number" inputmode="decimal" value="${x.carried||x.sold}"><div class="acts"><button class="btn gray" data-close style="flex:.7">やめる</button><button class="btn pri big" id="kEdOk">この内容で更新</button></div>`);
+      $('#kEdOk').onclick = () => { const q = num($('#kEd').value); closeSheet(); commit(rows.map(r=>del('carries', r.id)).concat(q>0?[up('carries', uid(), {date:d, itemId:id, itemName:it.name, unit:it.unit||x.unit, qty:q, note:rows[0]?.note||'', ts:Date.now()})]:[])); toast('更新しました'); };
+    }},
+    ...(x.carried ? [{label:'🗑 持ち出しを削除', cls:'red', fn:() => confirmSheet(`${esc(x.name)} の持ち出しを削除しますか？`, `${fmtQ(x.carried)}${esc(x.unit)}（販売の記録は消えません）`, () => { commit(rows.map(r=>del('carries', r.id))); toast('削除しました'); })}] : [])]);
+};
 /* ---- 在庫：最後に数えた数 ＋ その後にできた数 − その後に売れた・使った数 ---- */
 const after = (r, c) => !c || String(r.date) > String(c.date) || (String(r.date)===String(c.date) && num(r.ts) > num(c.ts));
 function lastCount(id){ return arr('stocks').filter(r=>r.itemId===id).sort((a,b)=>String(b.date).localeCompare(String(a.date)) || num(b.ts)-num(a.ts))[0]; }
@@ -1495,26 +1581,22 @@ $('#reconTabs').onclick = e => { const b=e.target.closest('[data-p]'); if(!b) re
 $('#rDate').onchange = () => { syncDateMonth($('#rDate').value); renderRecon(); };
 function renderRecon(){
   $('#reconDateBar').classList.toggle('hidden', S.reconP!=='day');
-  const d = $('#rDate').value || todayStr();
-  const pick = t => S.reconP==='day' ? onDate(t, d) : inMonth(t);
-  const g = {}; const key = (id,name,unit) => { const k = id+'|'+(unit||''); return g[k] = g[k] || {id, name, unit:unit||'', buy:0, made:0, used:0, sold:0, ordered:0}; };
-  pick('purchases').forEach(r => key(r.itemId, r.itemName, r.unit).buy += num(r.qty));
-  pick('processes').forEach(r => { if(num(r.fromQty)) key(r.fromItemId, r.fromItemName, r.fromUnit).used += num(r.fromQty); if(r.toItemId) key(r.toItemId, r.toItemName, r.toUnit).made += num(r.toQty); });
-  pick('sales').forEach(r => key(r.itemId, r.itemName, r.unit).sold += num(r.qty));
-  pick('orders').filter(r => r.status!=='配達済').forEach(r => key(r.itemId, r.itemName, r.unit).ordered += num(r.qty));
-  const rows = Object.values(g).map(x => ({...x, left: Math.round((x.buy + x.made - x.used - x.sold)*100)/100}))
-    .sort((a,b)=> (a.left<0?0:a.left>0?1:2) - (b.left<0?0:b.left>0?1:2) || String(a.name).localeCompare(String(b.name),'ja'));
-  const units = {}; rows.forEach(r => (units[r.id] = units[r.id] || new Set()).add(r.unit));
-  $('#reconList').innerHTML = rows.length ? rows.map(r => {
-    const st = r.left<0 ? `<span class="st ng">⚠️ ${fmtQ(-r.left)}${esc(r.unit)} 足りない</span>` : (r.ordered && r.left<r.ordered) ? `<span class="st ng">⚠️ 注文に ${fmtQ(r.ordered-r.left)}${esc(r.unit)} 足りない</span>` : r.left===0 ? `<span class="st ok">✅ ぴったり</span>` : r.left>0 ? `<span class="st left">📦 残り ${fmtQ(r.left)}${esc(r.unit)}</span>` : `<span class="st ng">⚠️ ${fmtQ(-r.left)}${esc(r.unit)} 足りない</span>`;
-    const u = esc(r.unit); const parts = [];
-    if(r.buy) parts.push(`<span class="in">仕入 <b>${fmtQ(r.buy)}</b>${u}</span>`);
-    if(r.made) parts.push(`<span class="in">加工でできた <b>${fmtQ(r.made)}</b>${u}</span>`);
-    if(r.used) parts.push(`<span class="out">加工に使った <b>${fmtQ(r.used)}</b>${u}</span>`);
-    if(r.sold) parts.push(`<span class="out">販売 <b>${fmtQ(r.sold)}</b>${u}</span>`);
-    if(r.ordered) parts.push(`<span class="ord">注文待ち <b>${fmtQ(r.ordered)}</b>${u}</span>`);
-    return `<div class="rc"><div class="h">${icon(S.items[r.id])}<span>${esc(r.name)}</span>${st}</div><div class="flow">${parts.join('')}</div>${units[r.id].size>1?'<div class="hint" style="color:var(--orange)">⚠️ 単位がちがう記録があるため、単位ごとに分けて表示しています</div>':''}${r.left<0&&!r.buy&&!r.made?'<div class="hint">仕入れ・加工の記録がありません。入力もれか、前日からの在庫かもしれません。</div>':''}</div>`;
-  }).join('') : emptyHTML('⚖️','この期間の記録がありません');
+  const d = $('#rDate').value || todayStr(), day = S.reconP==='day';
+  const pick = t => day ? onDate(t, d) : inMonth(t);
+  const buys = pick('purchases'), sales = pick('sales'), carr = pick('carries');
+  const cost = sumInc(buys), sale = sum(sales), rate = cost ? Math.round(sale/cost*100) : 0;
+  const g = {};
+  carr.forEach(r => { const x = g[r.itemId] = g[r.itemId] || {id:r.itemId, name:r.itemName, unit:r.unit||'', carried:0, sold:0, amt:0}; x.carried += num(r.qty); });
+  sales.forEach(r => { const x = g[r.itemId] = g[r.itemId] || {id:r.itemId, name:r.itemName, unit:r.unit||'', carried:0, sold:0, amt:0}; x.sold += num(r.qty); x.amt += num(r.total); });
+  const list = Object.values(g).sort((a,b)=>b.amt-a.amt || b.carried-a.carried);
+  const tc = list.reduce((t,x)=>t+x.carried,0), tsold = list.filter(x=>x.carried).reduce((t,x)=>t+Math.min(x.sold,x.carried),0);
+  const head = `<div class="kpis">${kpi('cost','🛒 仕入れ（税込）',yen(cost))}${kpi('sale','💴 売上',yen(sale))}</div>
+    <div class="kpis" style="margin-top:10px">${kpi('profit'+(sale-cost<0?' neg':''),'📈 差額',yen(sale-cost))}${kpi('','🔁 仕入れに対する売上',cost?rate+'%':'—', cost?(rate>=100?'仕入れ代を回収 ✅':'まだ回収できていません'):'')}</div>
+    ${tc?`<div class="kpis" style="margin-top:10px">${kpi('','📤 持ち出し',fmtQ(tc)+'点')}${kpi('','✅ 売れた率',Math.round(tsold/tc*100)+'%', `売れた ${fmtQ(tsold)}点・持ち帰り ${fmtQ(tc-tsold)}点`)}</div>`:''}
+    <h4 style="margin:18px 0 8px">商品ごと</h4>`;
+  $('#reconList').innerHTML = head + (list.length ? `<div class="tiles">${list.map(x=>{ const it = S.items[x.id], pct = x.carried ? Math.round(Math.min(x.sold,x.carried)/x.carried*100) : 0;
+      return `<div class="tile ${!x.carried?'warn':''}"><div class="tb">${!x.carried?'<span class="tag o">持ち出し記録なし</span>':`<span class="tag ${pct>=100?'g':''}">${pct}%</span>`}</div><div class="ti">${icon(it)}</div><div class="tn">${esc(x.name)}</div><div class="ts">${x.carried?`持ち出し ${fmtQ(x.carried)} → 売れた ${fmtQ(x.sold)}${x.carried>x.sold?`<br>持ち帰り ${fmtQ(x.carried-x.sold)}`:''}`:`売れた ${fmtQ(x.sold)}`} ${esc(x.unit)}</div><div class="tv" style="font-size:16px">${yen(x.amt)}</div></div>`; }).join('')}</div>`
+    : emptyHTML('📊', day ? 'この日の持ち出し・販売はまだありません' : 'この月の持ち出し・販売はまだありません'));
 }
 
 /* =========================================================
@@ -1714,6 +1796,8 @@ function seed(){
       });
     });
   }
+  { const g = {}; ops.filter(o=>o.table==='sales' && o.data && o.data.date===T).forEach(o => { const r = o.data; g[r.itemId] = g[r.itemId] || {r, q:0}; g[r.itemId].q += num(r.qty); });
+    Object.values(g).forEach(x => ops.push(up('carries','k'+uid(),{date:T, itemId:x.r.itemId, itemName:x.r.itemName, unit:x.r.unit, qty:x.q+Math.floor(Math.random()*3), note:'', ts:Date.now()}))); }
   ops.forEach(applyOp); persist(); renderAll();
 }
 
