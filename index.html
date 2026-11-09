@@ -41,6 +41,21 @@ details.cl .ca{margin-left:auto;color:var(--navy2)}
 details.cl .cb{padding:2px 2px 12px}
 .tel{display:inline-block;color:var(--sea);font-weight:700;text-decoration:none;background:var(--sky);border-radius:99px;padding:4px 10px;margin:4px 4px 0 0}
 .tel.big{display:block;text-align:center;padding:12px;font-size:16px;margin:6px 0 0}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.tile{position:relative;background:var(--beige);border:1.5px solid var(--line);border-radius:16px;padding:12px;cursor:pointer;display:flex;flex-direction:column;gap:4px;min-height:118px;transition:transform .08s}
+.tile:active{transform:scale(.97)}
+.tile .ti{font-size:26px;line-height:1}
+.tile .tn{font-weight:700;font-size:15px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tile .tv{font-weight:800;font-size:19px;color:var(--navy2);margin-top:auto}
+.tile .ts{font-size:12px;color:var(--mute);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tile .tb{position:absolute;top:8px;right:8px;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;max-width:60%}
+.tile .tag{margin:0;font-size:11px;padding:2px 7px}
+.tile.warn{border-color:var(--orange);background:#fff8ee}
+.tile.zero{opacity:.55}
+.acts-v{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.acts-v .btn{margin:0}
+.dl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin-top:10px;font-size:15px}
+.dl dt{color:var(--mute)} .dl dd{margin:0;font-weight:600}
 .note.info{background:var(--sky);border-color:#cfe0f2;color:var(--navy)}
 .card{background:#fff;border-radius:var(--r);padding:16px;margin-bottom:14px;box-shadow:0 1px 2px rgba(29,58,95,.06),0 4px 14px rgba(29,58,95,.05)}
 .card h2{font-size:15px;margin:0 0 12px;color:var(--navy);display:flex;align-items:center;gap:8px}
@@ -241,7 +256,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
       <button class="btn sub" data-route="1" style="margin-top:8px">🗺 配達ルートをつくる</button>
       <button class="btn sub" id="hClose" style="margin-top:8px"></button>
     </div>
-    <div class="card" id="homeTomorrow"><h2>🌅 明日の注文と仕入れの目安 <small id="htSum"></small></h2><div id="htBody"></div><div style="display:flex;gap:8px;margin-top:10px"><button class="btn sub" id="hTomorrow" style="margin:0">✏️ 注文を見る・直す</button><button class="btn sub" id="hBuy" style="margin:0">🛒 仕入れへ</button></div></div>
+    <div class="card" id="homeTomorrow"><h2>🌅 明日の注文と仕入れの目安 <small id="htSum"></small></h2><div id="htBody"></div><div style="display:flex;gap:8px;margin-top:10px"><button class="btn sub" id="hTomorrow" style="margin:0">✏️ 注文を見る・編集</button><button class="btn sub" id="hBuy" style="margin:0">🛒 仕入れへ</button></div></div>
     <div id="unpaidAlert"></div>
     <div class="card"><h2>☀️ 今日 <small id="todayLabel"></small></h2><div class="kpis" id="kToday"></div></div>
     <div class="card"><h2>📅 この月の合計 <small id="monthLabel2"></small></h2><div class="kpis" id="kMonth"></div></div>
@@ -342,7 +357,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
         <div id="pYield"></div>
         <div id="pEditNote"></div>
         <button class="btn pri" id="pSave">加工を記録する</button>
-        <button class="btn gray hidden" id="pCancel">直すのをやめる</button>
+        <button class="btn gray hidden" id="pCancel">編集をやめる</button>
       </div>
       <div class="card"><h2>📋 この日の加工 <small id="pDayLabel"></small></h2><div class="list" id="pList"></div></div>
       <div class="card" id="stockCard">
@@ -681,7 +696,7 @@ function renderHome(){
   $('#unpaidAlert').innerHTML = unpaid.length ? `<div class="note err" style="cursor:pointer" id="goUnpaid">📒 未入金（掛け）が <b>${unpaid.length}件・${yen(sum(unpaid))}</b> あります。<u>一覧を見る</u></div>` : '';
   const gu = $('#goUnpaid'); if(gu) gu.onclick = () => goView('more');
   renderHomeOrders(t);
-  $('#hClose').textContent = S.closings[t] ? '🔒 今日は締め済みです（見る・直す）' : '🔒 今日の締めをする';
+  $('#hClose').textContent = S.closings[t] ? '🔒 今日は締め済みです（見る・編集）' : '🔒 今日の締めをする';
   // today
   const ts = onDate('sales', t), tb = onDate('purchases', t);
   const tSale = sum(ts), tCost = sumInc(tb), tCust = new Set(ts.map(r=>r.customerId)).size;
@@ -834,27 +849,27 @@ function renderClose(){
   const det = (head, right, body) => `<details class="cl"><summary><span class="cn">${head}</span><span class="ca">${right}</span></summary><div class="cb">${body}</div></details>`;
   $('#clList').innerHTML = ords.length ? ords.map(o => det(`${esc(o.customerName)}${isCredit(o)?'<span class="tag r">掛け</span>':''}${o.pay==='入金済'?'<span class="tag g">入金済</span>':''}`, yen(o.total),
       o.lines.map(l=>`<div class="conf-line"><div>${esc(l.itemName)}<div class="q">${fmtQ(l.qty)}${esc(l.unit||'')} × ${yen(l.unitPrice)}${l.mode&&l.mode!=='いつも'?` <span class="tag o">${esc(l.mode)}</span>`:''}</div></div><div class="p">${yen(l.total)}</div></div>`).join('')
-      + `<div style="text-align:right;margin-top:6px"><button class="btn sub" data-cl-edit="${esc(o.id)}" style="width:auto;padding:7px 12px;font-size:13px;margin:0">✏️ 直す</button></div>`)).join('')
+      + `<div style="text-align:right;margin-top:6px"><button class="btn sub" data-cl-edit="${esc(o.id)}" style="width:auto;padding:7px 12px;font-size:13px;margin:0">✏️ 編集</button></div>`)).join('')
     : emptyHTML('🚚','この日の販売はありません');
   $('#clBuys').innerHTML = buys.length ? det(`${buys.length}品`, yen(tCost), buys.map(r=>`<div class="conf-line"><div>${esc(r.itemName)}<div class="q">${r.supplierName?esc(r.supplierName)+' ・ ':''}${fmtQ(r.qty)}${esc(r.unit||'')} × ${yen(r.unitCost)}</div></div><div class="p">${yen(incOf(r))}<small>税抜 ${yen(r.total)}</small></div></div>`).join('')) : emptyHTML('🛒','この日の仕入れはありません');
   $('#clTotal').innerHTML = `<div class="kpis">${kpi('sale','💴 売上合計',yen(tSale),`現金 ${yen(cash)}`)}${kpi('cost','🛒 仕入れ合計（税込）',yen(tCost))}</div><div style="margin-top:10px">${kpi('profit'+(tSale-tCost<0?' neg':''),'📈 差額',yen(tSale-tCost), tSale?`差額率 ${Math.round((tSale-tCost)/tSale*100)}%`:'')}</div>`;
-  $('#clActs').innerHTML = (cl ? `<button class="btn sub" id="clReopen">🔓 締めを解除して直す</button>` : `<button class="btn pri big" id="clDo">🔒 ${d===todayStr()?'今日':md(d)}を締める</button>`)
+  $('#clActs').innerHTML = (cl ? `<button class="btn sub" id="clReopen">🔓 締めを解除して編集</button>` : `<button class="btn pri big" id="clDo">🔒 ${d===todayStr()?'今日':md(d)}を締める</button>`)
     + `<button class="btn gray" id="clBack">← ホームへ</button>` + (cfg.sheet ? `<button class="btn sub" id="clSheet">📊 スプレッドシートで見る</button>` : '');
   $('#clBack').onclick = () => goView('home');
   if($('#clSheet')) $('#clSheet').onclick = () => window.open(cfg.sheet, '_blank');
   if($('#clReopen')) $('#clReopen').onclick = () => confirmSheet('締めを解除しますか？', `${dayLabel(d)} を未確認に戻します。販売や仕入れは、そのまま残ります。`, () => { commit([del('closings', d)]); toast('締めを解除しました'); }, '解除する', 'pri');
   if($('#clDo')) $('#clDo').onclick = () => {
     const warn = (pend.length?`・未配達の注文 ${pend.length}件\n`:'') + (noPrice.length?`・単価0円の販売 ${noPrice.length}行\n`:'');
-    confirmSheet(`${dayLabel(d)} を締めますか？`, `売上 ${yen(tSale)} ／ 仕入れ ${yen(tCost)} ／ 差額 ${yen(tSale-tCost)}${warn?`<br><br>⚠️ 確認してください：<br>${esc(warn).replace(/\n/g,'<br>')}`:''}<br><br>締めたあとでも、確認を挟んで直せます。`, () => {
+    confirmSheet(`${dayLabel(d)} を締めますか？`, `売上 ${yen(tSale)} ／ 仕入れ ${yen(tCost)} ／ 差額 ${yen(tSale-tCost)}${warn?`<br><br>⚠️ 確認してください：<br>${esc(warn).replace(/\n/g,'<br>')}`:''}<br><br>締めたあとでも、確認を挟んで編集できます。`, () => {
       commit([up('closings', d, {date:d, closedAt:new Date(Date.now()+9*3600000).toISOString().slice(0,19), sales:tSale, cost:tCost, profit:tSale-tCost, customers:ords.length, pending:pend.length})]);
       toast('🔒 締めました。おつかれさまでした'); }, '締める', 'pri');
   };
 }
 $('#clList').onclick = e => { const b = e.target.closest('[data-cl-edit]'); if(!b) return; startEditSale(b.dataset.clEdit); goView('sell'); };
-/* 締め済みの日を直すときは、確認を挟む */
+/* 締め済みの日を編集するときは、確認を挟む */
 function guardClosed(d, fn){
   if(!S.closings[d]) return fn();
-  confirmSheet('この日は締め済みです', `${dayLabel(d)} は締めた日です。直すと、締めは「未確認」に戻ります。直しますか？`, () => { commit([del('closings', d)]); fn(); }, '直す', 'pri');
+  confirmSheet('この日は締め済みです', `${dayLabel(d)} は締めた日です。編集すると、締めは「未確認」に戻ります。編集しますか？`, () => { commit([del('closings', d)]); fn(); }, '編集する', 'pri');
 }
 
 /* ---- ホーム: 予約・配達を先頭に ---- */
@@ -926,12 +941,12 @@ function renderPick(){
   $('#listTitle').innerHTML = `${order?'📋 この日の注文':'📋 この日の販売'} <small>${md(d)}${w?'・'+w:''}</small>`;
   if(order){
     const os = ordersOf(onDate('orders', d));
-    $('#orderList').innerHTML = os.length ? os.map(o => { const dn = o.lines[0].status==='配達済'; return `<div class="li"><div class="ic">📝</div><div class="m"><div class="t">${esc(o.customerName)}${dn?'<span class="tag g">配達済</span>':''}</div><div class="sub">${linesText(o)}</div></div><div class="a">${yen(o.total)}</div>${dn?'':`<button class="btn sub" data-editorder="${esc(o.id)}" style="padding:8px 10px;font-size:13px">直す</button>`}<button class="btn del" data-delord="${esc(o.id)}">削除</button></div>`; }).join('')
+    $('#orderList').innerHTML = os.length ? os.map(o => { const dn = o.lines[0].status==='配達済'; return `<div class="li"><div class="ic">📝</div><div class="m"><div class="t">${esc(o.customerName)}${dn?'<span class="tag g">配達済</span>':''}</div><div class="sub">${linesText(o)}</div></div><div class="a">${yen(o.total)}</div>${dn?'':`<button class="btn sub" data-editorder="${esc(o.id)}" style="padding:8px 10px;font-size:13px">編集</button>`}<button class="btn del" data-delord="${esc(o.id)}">削除</button></div>`; }).join('')
       + `<div class="li" style="border-top:2px solid var(--line)"><div class="m"><div class="t">合計 ${os.length}軒</div></div><div class="a" style="color:var(--navy2);font-size:18px">${yen(sum(os))}</div></div>`
       : emptyHTML('📝','この日の注文はまだありません。お客さまをタップして入れましょう');
   } else {
     const orders = ordersOf(onDate('sales', d));
-    $('#orderList').innerHTML = orders.length ? orders.map(o => `<div class="li"><div class="ic">🏠</div><div class="m"><div class="t">${esc(o.customerName)}${isCredit(o)?'<span class="tag r">掛け</span>':''}${o.pay==='入金済'?'<span class="tag g">入金済</span>':''}</div><div class="sub">${linesText(o)}</div></div><div class="a">${yen(o.total)}${o.discount?`<small>サービス −${yen(o.discount)}</small>`:''}</div><button class="btn sub" data-editsale="${esc(o.id)}" style="padding:8px 10px;font-size:13px">直す</button><button class="btn del" data-delorder="${esc(o.id)}">削除</button></div>`).join('')
+    $('#orderList').innerHTML = orders.length ? orders.map(o => `<div class="li"><div class="ic">🏠</div><div class="m"><div class="t">${esc(o.customerName)}${isCredit(o)?'<span class="tag r">掛け</span>':''}${o.pay==='入金済'?'<span class="tag g">入金済</span>':''}</div><div class="sub">${linesText(o)}</div></div><div class="a">${yen(o.total)}${o.discount?`<small>サービス −${yen(o.discount)}</small>`:''}</div><button class="btn sub" data-editsale="${esc(o.id)}" style="padding:8px 10px;font-size:13px">編集</button><button class="btn del" data-delorder="${esc(o.id)}">削除</button></div>`).join('')
       + `<div class="li" style="border-top:2px solid var(--line)"><div class="m"><div class="t">合計 ${orders.length}軒</div></div><div class="a" style="color:var(--navy2);font-size:18px">${yen(sum(orders))}</div></div>`
       : emptyHTML('🚚','この日の販売はまだありません');
     renderDue(d);
@@ -944,7 +959,7 @@ function renderDue(d){
   const done = all.filter(o => st(o)==='配達済');
   $('#dueSum').textContent = all.length ? `残り${todo.length}件 / 全${all.length}件` : '';
   $('#dueList').innerHTML = !all.length ? emptyHTML('📭','この日の注文はありません。前日までに受けた注文は「📝 注文を受ける」から入れられます')
-    : (todo.length ? todo.map(o => `<div class="li"><div class="ic">📦</div><div class="m"><div class="t">${esc(o.customerName)}</div><div class="sub">${esc(area(o))}${area(o)?' ・ ':''}${linesText(o)}</div></div><div class="a">${yen(o.total)}</div><button class="btn pri" data-deliver="${esc(o.id)}" style="margin:0;padding:11px 14px;font-size:14px;width:auto;box-shadow:none">配達する</button></div><div class="li" style="padding-top:0;border-top:0;justify-content:flex-end;gap:8px"><button class="btn sub" data-editorder="${esc(o.id)}" style="padding:7px 12px;font-size:13px;width:auto">✏️ 注文を直す</button><button class="btn del" data-delord="${esc(o.id)}">削除</button></div>`).join('') : emptyHTML('🎉','この日の注文はすべて配達済みです'))
+    : (todo.length ? todo.map(o => `<div class="li"><div class="ic">📦</div><div class="m"><div class="t">${esc(o.customerName)}</div><div class="sub">${esc(area(o))}${area(o)?' ・ ':''}${linesText(o)}</div></div><div class="a">${yen(o.total)}</div><button class="btn pri" data-deliver="${esc(o.id)}" style="margin:0;padding:11px 14px;font-size:14px;width:auto;box-shadow:none">配達する</button></div><div class="li" style="padding-top:0;border-top:0;justify-content:flex-end;gap:8px"><button class="btn sub" data-editorder="${esc(o.id)}" style="padding:7px 12px;font-size:13px;width:auto">✏️ 編集</button><button class="btn del" data-delord="${esc(o.id)}">削除</button></div>`).join('') : emptyHTML('🎉','この日の注文はすべて配達済みです'))
     + (done.length ? `<div class="hint">配達済 ${done.length}件：${done.map(o=>esc(o.customerName)).join('、')}</div>` : '');
 }
 $('#dueList').onclick = e => { const b = e.target.closest('[data-deliver]'); if(b){ startDeliver(b.dataset.deliver); return; } $('#orderList').onclick(e); };
@@ -1081,7 +1096,7 @@ $('#cartConfirm').onclick = () => {
   const bad = lines.find(x => !x.k.qty); if(bad){ toast(`${esc(bad.it.name)} の数量を入れてください`); return; }
   const noPrice = lines.find(x => !x.k.lp && x.l.mode!=='おまけ' && x.l.mode!=='単価変更');
   const tot = lines.reduce((s,x)=>s+x.k.total,0), disc = lines.reduce((s,x)=>s+x.k.discount,0);
-  openSheet(`<h3>${isOrder?(cart.editing?'注文をこの内容に直しますか？':'この注文を受けますか？'):(cart.editing?'この内容に直しますか？':'この内容で登録しますか？')}</h3>
+  openSheet(`<h3>${isOrder?(cart.editing?'注文をこの内容で更新しますか？':'この注文を受けますか？'):(cart.editing?'この内容で更新しますか？':'この内容で登録しますか？')}</h3>
     <div class="conf-cust">${esc(san(c.name))}</div><div class="conf-meta">${isOrder?'配達日 ':''}${md(d)}${isOrder&&w?'（'+w+'）':''} ・ ${esc(c.area||'')}</div>
     ${lines.map(x=>`<div class="conf-line"><div>${icon(x.it)} ${esc(x.it.name)}<div class="q">${fmtQ(x.k.qty)}${esc(x.it.unit||'')} × ${yen(x.k.unit)}${x.l.mode!=='いつも'?` <span class="tag o">${esc(x.l.mode)}</span>`:''}</div></div><div class="p">${yen(x.k.total)}${x.k.discount?`<small>−${yen(x.k.discount)}</small>`:''}</div></div>`).join('')}
     ${noPrice?`<div class="note" style="margin-top:10px">⚠️ ${esc(noPrice.it.name)} の単価が0円です。よろしいですか？</div>`:''}
@@ -1125,7 +1140,7 @@ function renderBuy(){
   fillSel($('#bItem'), itemOptions(true));
   const d = $('#bDate').value || todayStr(); $('#bDayLabel').textContent = md(d);
   const rows = onDate('purchases', d).sort((a,b)=>num(b.ts)-num(a.ts));
-  $('#bList').innerHTML = rows.length ? rows.map(r=>`<div class="li"><div class="ic">${icon(S.items[r.itemId])}</div><div class="m"><div class="t">${esc(r.itemName)}</div><div class="sub">${r.supplierName?esc(r.base?r.base+'・':'')+esc(r.supplierName)+' ・ ':''}${fmtQ(r.qty)}${esc(r.unit)} × ${yen(r.unitCost)}${num(r.taxRate)===10?' <span class="tag o">税10%</span>':''}${r.note?' ・'+esc(r.note):''}</div></div><div class="a">${yen(r.total)}<small>税込 ${yen(incOf(r))}</small></div><button class="btn sub" data-editbuy="${esc(r.id)}" style="padding:8px 10px;font-size:13px">直す</button><button class="btn del" data-del="purchases:${esc(r.id)}">削除</button></div>`).join('') + `<div class="li" style="border-top:2px solid var(--line)"><div class="m"><div class="t">合計</div></div><div class="a" style="color:var(--orange)">${yen(sum(rows))}<small>税込 ${yen(sumInc(rows))}</small></div></div>` + suppTotals(rows) : emptyHTML('🛒','この日の仕入れはまだありません');
+  $('#bList').innerHTML = rows.length ? `<div class="tiles">${rows.map(r=>`<div class="tile" data-buy="${esc(r.id)}">${num(r.taxRate)===10?'<div class="tb"><span class="tag o">税10%</span></div>':''}<div class="ti">${icon(S.items[r.itemId])}</div><div class="tn">${esc(r.itemName)}</div><div class="ts">${fmtQ(r.qty)}${esc(r.unit)} × ${yen(r.unitCost)}${r.supplierName?'<br>'+esc(r.supplierName):''}</div><div class="tv">${yen(incOf(r))}<small style="font-size:11px;font-weight:400;color:var(--mute)"> 税込</small></div></div>`).join('')}</div>` + `<div class="li" style="border-top:2px solid var(--line);margin-top:10px"><div class="m"><div class="t">合計 ${rows.length}品</div></div><div class="a" style="color:var(--orange)">${yen(sumInc(rows))}<small>税抜 ${yen(sum(rows))}</small></div></div>` + suppTotals(rows) : emptyHTML('🛒','この日の仕入れはまだありません');
   renderSupp();
   calcBuy();
 }
@@ -1185,12 +1200,17 @@ function manageSuppliers(){
   openSheet(`<h3>仕入先の編集</h3><h4 style="margin:10px 0 2px">静岡市</h4>${g('静岡市')}<h4 style="margin:14px 0 2px">焼津市</h4>${g('焼津市')}<div class="acts"><button class="btn gray" data-close>閉じる</button></div>`);
   $$('#sheet [data-spe]').forEach(b => b.onclick = () => openSupplier(b.dataset.spe));
 }
-/* 仕入れの修正 */
-$('#bList').addEventListener('click', e => { const b = e.target.closest('[data-editbuy]'); if(b) openPurchase(b.dataset.editbuy); });
+/* 仕入れの編集 */
+$('#bList').addEventListener('click', e => {
+  const t = e.target.closest('[data-buy]'); if(!t) return; const r = S.purchases[t.dataset.buy]; if(!r) return;
+  actionSheet(`${icon(S.items[r.itemId])} ${esc(r.itemName)}`, dl([['日付', dayLabel(r.date)], ['仕入先', esc((r.base?r.base+'・':'')+(r.supplierName||'指定なし'))], ['数量', `${fmtQ(r.qty)}${esc(r.unit)} × ${yen(r.unitCost)}`], ['金額', `${yen(incOf(r))}（税込・${num(r.taxRate)||8}%）／ 税抜 ${yen(r.total)}`], ['メモ', esc(r.note||'')]]), [
+    {label:'✏️ 編集', cls:'pri', fn:()=>openPurchase(r.id)},
+    {label:'🗑 削除', cls:'red', fn:()=>confirmSheet('この仕入れを削除しますか？', `${esc(r.itemName)} ${fmtQ(r.qty)}${esc(r.unit)}・${yen(incOf(r))}`, () => { commit([del('purchases', r.id)]); toast('削除しました'); })}]);
+});
 function openPurchase(id){
   const r = S.purchases[id]; if(!r) return;
   guardClosed(r.date, () => {
-    openSheet(`<h3>仕入れの修正</h3>
+    openSheet(`<h3>仕入れの編集</h3>
       <label class="f">日付</label><input type="date" id="epDate" value="${esc(r.date)}">
       <label class="f">仕入先</label><select id="epSupp"><option value="">指定なし</option>${['静岡市','焼津市'].map(bs=>`<optgroup label="${bs}">${suppArr().filter(x=>x.base===bs).map(x=>`<option value="${esc(x.id)}" ${x.id===r.supplierId?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup>`).join('')}</select>
       <label class="f">品目</label><select id="epItem">${itemOptions(false)}</select>
@@ -1203,7 +1223,7 @@ function openPurchase(id){
       const it = S.items[$('#epItem').value], qty = num($('#epQty').value), cost = num($('#epCost').value), d = $('#epDate').value || r.date, rate = num($('#epTax').value)||8, sp = S.suppliers[$('#epSupp').value];
       if(!it) return toast('品目を選んでください'); if(!qty) return toast('数量を入れてください');
       const total = Math.round(qty*cost);
-      closeSheet(); commit([up('purchases', id, {...r, date:d, dow:dowOf(d), itemId:it.id, itemName:it.name, qty, unit:$('#epUnit').value, unitCost:cost, total, taxRate:rate, totalInc:Math.round(total*(1+rate/100)), supplierId:sp?sp.id:'', supplierName:sp?sp.name:'', base:sp?sp.base:'', note:$('#epNote').value.trim()})]); toast('直しました');
+      closeSheet(); commit([up('purchases', id, {...r, date:d, dow:dowOf(d), itemId:it.id, itemName:it.name, qty, unit:$('#epUnit').value, unitCost:cost, total, taxRate:rate, totalInc:Math.round(total*(1+rate/100)), supplierId:sp?sp.id:'', supplierName:sp?sp.name:'', base:sp?sp.base:'', note:$('#epNote').value.trim()})]); toast('更新しました');
     };
     $('#epDel').onclick = () => confirmSheet('この仕入れを削除しますか？', `${esc(r.itemName)} ${fmtQ(r.qty)}${esc(r.unit)}・${yen(r.total)}`, () => { commit([del('purchases', id)]); toast('削除しました'); });
   });
@@ -1274,7 +1294,7 @@ function renderProcBase(){
   const d = $('#pDate').value || todayStr(); $('#pDayLabel').textContent = md(d);
   const g = {}; onDate('processes', d).forEach(r => (g[r.batchId] = g[r.batchId] || []).push(r));
   const batches = Object.values(g).sort((a,b)=>num(b[0].ts)-num(a[0].ts));
-  $('#pList').innerHTML = batches.length ? batches.map(b => { const from = b.find(r=>num(r.fromQty)) || b[0]; return `<div class="li"><div class="ic">🔪</div><div class="m"><div class="t">${insOf(b).map(x=>`${esc(x.name)} ${fmtQ(x.qty)}${esc(x.unit)}`).join('・')}</div><div class="sub">→ ${b.filter(r=>r.toItemId).map(r=>`${esc(r.toItemName)} ${fmtQ(r.toQty)}${esc(r.toUnit||'')}`).join('、')}${from.note?' ・'+esc(from.note):''}${yieldInfo(b)}</div></div><button class="btn sub" data-editbatch="${esc(b[0].batchId)}" style="padding:8px 10px;font-size:13px">編集</button><button class="btn del" data-delbatch="${esc(b[0].batchId)}">削除</button></div>`; }).join('') : emptyHTML('🔪','この日の加工はまだありません');
+  $('#pList').innerHTML = batches.length ? `<div class="tiles">${batches.map(b => { const outsB = b.filter(r=>r.toItemId), net = netKg(b), xs = insOf(b), fq = xs.reduce((t,x)=>t+x.qty,0), yp = net && fq && xs.every(x=>x.unit==='kg') ? Math.round(net/fq*100) : 0; return `<div class="tile ${yp>100?'warn':''}" data-batch="${esc(b[0].batchId)}">${yp?`<div class="tb"><span class="tag ${yp>100?'o':'g'}">歩留${yp}%</span></div>`:''}<div class="ti">🔪</div><div class="tn">${xs.map(x=>esc(x.name)).join('・')}</div><div class="ts">${xs.map(x=>fmtQ(x.qty)+esc(x.unit)).join('・')} →</div><div class="tv" style="font-size:15px">${outsB.map(r=>`${esc(r.toItemName)} ${fmtQ(r.toQty)}${esc(r.toUnit||'')}`).join('<br>')}</div></div>`; }).join('')}</div>` : emptyHTML('🔪','この日の加工はまだありません');
 }
 function renderProc(){ renderProcBase(); updateYield(); renderPlan(); renderStock(); }
 /* ---- 在庫：最後に数えた数 ＋ その後にできた数 − その後に売れた・使った数 ---- */
@@ -1297,14 +1317,8 @@ function renderStock(){
   const list = stockItems().sort((a,b)=>(b.qty>0)-(a.qty>0) || String(a.it.name).localeCompare(String(b.it.name),'ja'));
   const pos = list.filter(x=>x.qty>0);
   $('#stSum').textContent = pos.length ? `${pos.length}品に在庫あり` : '';
-  $('#stList').innerHTML = list.length ? list.map(x => {
-    const u = esc(x.it.unit||''), neg = x.qty<0;
-    const flow = [x.c?`<span class="in">数えた ${fmtQ(x.base)}${u}（${md(x.c.date)}）</span>`:'', x.made?`<span class="in">できた ＋${fmtQ(x.made)}</span>`:'', x.sold?`<span class="out">売れた −${fmtQ(x.sold)}</span>`:'', x.used?`<span class="out">加工に使った −${fmtQ(x.used)}</span>`:''].join('');
-    return `<div class="rc"><div class="h">${icon(x.it)}<span>${esc(x.it.name)}</span><span class="st ${neg?'ng':x.qty>0?'left':'ok'}">${neg?`記録外から ${fmtQ(-x.qty)}${u}`:`在庫 ${fmtQ(x.qty)}${u}`}</span></div>
-      <div class="flow">${flow}</div>
-      ${neg?`<div class="hint" style="color:var(--orange)">記録より多く売れています。前からあった在庫から出た分です。「🔢 数える」で今の数を入れると正しくなります。</div>`:''}
-      <div style="display:flex;gap:8px;margin-top:8px">${x.qty>0?`<button class="btn pri" data-stsell="${esc(x.it.id)}" style="margin:0;padding:10px;font-size:14px;box-shadow:none">🚚 在庫から売る</button>`:''}<button class="btn sub" data-stcount="${esc(x.it.id)}" style="margin:0;padding:10px;font-size:14px">🔢 数える</button></div></div>`;
-  }).join('') : emptyHTML('📦','在庫はまだありません。加工を記録すると、売れ残った分がここに出ます');
+  $('#stList').innerHTML = list.length ? `<div class="tiles">${list.map(x => { const u = esc(x.it.unit||''), neg = x.qty<0;
+    return `<div class="tile ${neg?'warn':x.qty<=0?'zero':''}" data-st="${esc(x.it.id)}">${x.c?'<div class="tb"><span class="tag">数えた</span></div>':''}<div class="ti">${icon(x.it)}</div><div class="tn">${esc(x.it.name)}</div><div class="ts">${x.made?`できた+${fmtQ(x.made)} `:''}${x.sold?`売れた−${fmtQ(x.sold)}`:''}</div><div class="tv" style="${neg?'color:var(--orange)':''}">${neg?`記録外 ${fmtQ(-x.qty)}`:fmtQ(x.qty)}<small style="font-size:12px;font-weight:400;color:var(--mute)"> ${u}</small></div></div>`; }).join('')}</div>` : emptyHTML('📦','在庫はまだありません。加工を記録すると、売れ残った分がここに出ます');
 }
 function openCount(id){
   const it = id && S.items[id], st = id ? stockOf(id) : null;
@@ -1323,8 +1337,13 @@ function openCount(id){
 }
 $('#stAdd').onclick = () => openCount(null);
 $('#stList').onclick = e => {
-  const c = e.target.closest('[data-stcount]'); if(c){ openCount(c.dataset.stcount); return; }
-  const s2 = e.target.closest('[data-stsell]'); if(!s2) return;
+  const t = e.target.closest('[data-st]'); if(!t) return; const id = t.dataset.st, it = S.items[id], x = stockOf(id), u = esc(it.unit||'');
+  actionSheet(`${icon(it)} ${esc(it.name)}`, dl([['在庫', x.qty<0?`<span style="color:var(--orange)">記録外から ${fmtQ(-x.qty)}${u}</span>`:`${fmtQ(x.qty)}${u}`], ['数えた数', x.c?`${fmtQ(x.base)}${u}（${md(x.c.date)}）`:''], ['できた', x.made?'＋'+fmtQ(x.made)+u:''], ['売れた', x.sold?'−'+fmtQ(x.sold)+u:''], ['加工に使った', x.used?'−'+fmtQ(x.used)+u:'']]) + (x.qty<0?`<div class="hint" style="color:var(--orange)">記録より多く売れています。前からあった在庫から出た分です。「数える」で今の数を入れると正しくなります。</div>`:''), [
+    ...(x.qty>0?[{label:'🚚 在庫から売る', cls:'pri', fn:()=>sellFromStock(id)}]:[]),
+    {label:'🔢 数える（今ある数を入れる）', fn:()=>openCount(id)}]);
+};
+function sellFromStock(stId){
+  const s2 = {dataset:{stsell:stId}};
   S.pendingAdd = s2.dataset.stsell; S.sellMode='deliver'; S.cart=null; $('#sDate').value=todayStr(); goView('sell');
   toast(`${esc(S.items[S.pendingAdd].name)} を売るお客さまを選んでください`, 2600);
 };
@@ -1408,7 +1427,7 @@ $('#pSave').onclick = () => {
   }
   commit((ed ? ed.ids.map(id=>del('processes', id)) : []).concat(rows));
   endProcEdit(); resetProcForm();
-  toast(`${vin.map(o=>esc(S.items[o.itemId].name)).join('・')} → ${valid.map(o=>esc(S.items[o.itemId].name)).join('・')} を${ed?'直しました':'記録しました'}`);
+  toast(`${vin.map(o=>esc(S.items[o.itemId].name)).join('・')} → ${valid.map(o=>esc(S.items[o.itemId].name)).join('・')} を${ed?'更新しました':'記録しました'}`);
 };
 function endProcEdit(){ S.pEdit = null; $('#pSave').textContent = '加工を記録する'; $('#pCancel').classList.add('hidden'); $('#pEditNote').innerHTML = ''; }
 function startProcEdit(batchId){
@@ -1418,12 +1437,18 @@ function startProcEdit(batchId){
   ins = insOf(rows).map(x=>({k:uid(), itemId:x.id, qty:x.qty||''}));
   outs = rows.filter(r=>r.toItemId).map(r=>({k:uid(), itemId:r.toItemId, qty:r.toQty})); if(!outs.length) outs = [{k:uid(), itemId:'', qty:''}];
   renderProc();
-  $('#pSave').textContent = 'この内容に直す'; $('#pCancel').classList.remove('hidden');
-  $('#pEditNote').innerHTML = `<div class="note info">✏️ ${insOf(rows).map(x=>esc(x.name)).join('・')} の加工を直しています。直したら「この内容に直す」を押してください。</div>`;
+  $('#pSave').textContent = 'この内容で更新'; $('#pCancel').classList.remove('hidden');
+  $('#pEditNote').innerHTML = `<div class="note info">✏️ ${insOf(rows).map(x=>esc(x.name)).join('・')} の加工を編集しています。終わったら「この内容で更新」を押してください。</div>`;
   $('#pIns').scrollIntoView({behavior:'smooth', block:'center'});
 }
 $('#pCancel').onclick = () => { endProcEdit(); resetProcForm(); };
-$('#pList').onclick = e => { const eb=e.target.closest('[data-editbatch]'); if(eb){ startProcEdit(eb.dataset.editbatch); return; } const b=e.target.closest('[data-delbatch]'); if(!b) return; const rows=arr('processes').filter(r=>r.batchId===b.dataset.delbatch); confirmSheet('この加工の記録を削除しますか？', `${insOf(rows).map(x=>esc(x.name)).join('・')} → ${rows.filter(r=>r.toItemId).map(r=>esc(r.toItemName)).join('・')}`, ()=>{ commit(rows.map(r=>del('processes',r.id))); toast('削除しました'); }); };
+$('#pList').onclick = e => { const t=e.target.closest('[data-batch]'); if(!t) return; const rows=arr('processes').filter(r=>r.batchId===t.dataset.batch); if(!rows.length) return;
+  const xs = insOf(rows), net = netKg(rows), fq = xs.reduce((a,x)=>a+x.qty,0);
+  actionSheet(`🔪 ${xs.map(x=>esc(x.name)).join('・')}`, dl([['日付', dayLabel(rows[0].date)], ['使った原料', xs.map(x=>`${esc(x.name)} ${fmtQ(x.qty)}${esc(x.unit)}`).join('<br>')], ['できた商品', rows.filter(r=>r.toItemId).map(r=>`${esc(r.toItemName)} ${fmtQ(r.toQty)}${esc(r.toUnit||'')}`).join('<br>')], ['正味', net?fmtQ(net)+'kg':''], ['歩留まり', net&&fq&&xs.every(x=>x.unit==='kg')?Math.round(net/fq*100)+'%':''], ['メモ', esc(rows[0].note||'')]]), [
+    {label:'✏️ 編集', cls:'pri', fn:()=>startProcEdit(t.dataset.batch)},
+    {label:'🗑 削除', cls:'red', fn:()=>delBatch(rows)}]);
+};
+function delBatch(rows){ confirmSheet('この加工の記録を削除しますか？', `${insOf(rows).map(x=>esc(x.name)).join('・')} → ${rows.filter(r=>r.toItemId).map(r=>esc(r.toItemName)).join('・')}`, ()=>{ commit(rows.map(r=>del('processes',r.id))); toast('削除しました'); }); }
 
 /* recon */
 $('#reconTabs').onclick = e => { const b=e.target.closest('[data-p]'); if(!b) return; S.reconP=b.dataset.p; $$('#reconTabs button').forEach(x=>x.classList.toggle('on',x===b)); renderRecon(); };
@@ -1461,14 +1486,20 @@ function renderCust(){
   $('#cCount').textContent = `${all.length}軒`;
   const ms = {}; inMonth('sales').forEach(r => ms[r.customerId] = (ms[r.customerId]||0) + num(r.total));
   const unpaid = {}; arr('sales').filter(isCredit).forEach(r => unpaid[r.customerId] = (unpaid[r.customerId]||0) + num(r.total));
-  $('#cList').innerHTML = list.length ? list.map(c => `<div class="li" data-cust="${esc(c.id)}" style="cursor:pointer"><div class="ic">🏠</div><div class="m"><div class="t">${esc(c.name)}${String(c.since||'').slice(0,7)===S.month?'<span class="tag g">新規</span>':''}${unpaid[c.id]?`<span class="tag r">未入金 ${yen(unpaid[c.id])}</span>`:''}</div><div class="sub">📍${esc(c.area||'地域未登録')}</div>${telsOf(c).length?`<div class="sub">${telsOf(c).map(telLink).join(' ')}</div>`:''}${c.note?`<div class="sub" style="color:var(--sea)">📝 ${esc(c.note)}</div>`:''}</div><div class="a" style="font-size:13px">${ms[c.id]?yen(ms[c.id]):''}<small style="color:var(--mute)">${c.since?esc(String(c.since).replace(/-/g,'/'))+'〜':''}</small></div></div>`).join('') : emptyHTML('👥', all.length ? '見つかりませんでした' : 'まだ登録がありません');
+  $('#cList').innerHTML = list.length ? `<div class="tiles">${list.map(c => { const nw = String(c.since||'').slice(0,7)===S.month; return `<div class="tile" data-cust="${esc(c.id)}">${(nw||unpaid[c.id])?`<div class="tb">${unpaid[c.id]?'<span class="tag r">未入金</span>':''}${nw?'<span class="tag g">新規</span>':''}</div>`:''}<div class="ti">🏠</div><div class="tn">${esc(c.name)}</div><div class="ts">📍${esc(c.area||'地域未登録')}${telsOf(c).length?'<br>📞'+esc(telsOf(c)[0]):''}</div>${ms[c.id]?`<div class="tv" style="font-size:15px">${yen(ms[c.id])}<small style="font-size:11px;font-weight:400;color:var(--mute)"> 今月</small></div>`:''}</div>`; }).join('')}</div>` : emptyHTML('👥', all.length ? '見つかりませんでした' : 'まだ登録がありません');
   const ar = {}, sub = {}; all.forEach(c => { const a = bigArea(c.area); ar[a] = (ar[a]||0) + 1; const t = townOf(c.area); if(t){ sub[a] = sub[a]||{}; sub[a][t] = (sub[a][t]||0)+1; } });
   const ae = Object.entries(ar).sort((a,b)=>(a[0]==='その他・未設定')-(b[0]==='その他・未設定') || b[1]-a[1]), amx = Math.max(1, ...ae.map(x=>x[1]));
   $('#areaRank').innerHTML = ae.length ? ae.map(([a,n])=>`<div class="row"><div class="ic">📍</div><div><div>${esc(a)}${sub[a]?`<span style="font-size:12px;color:var(--mute);margin-left:6px">${Object.entries(sub[a]).sort((x,y)=>y[1]-x[1]).map(([t,k])=>esc(t)+k).join('・')}</span>`:''}</div><div class="bar"><div style="width:${n/amx*100}%;background:var(--green)"></div></div></div><div class="amt">${n}軒</div></div>`).join('') : emptyHTML('📍','お客さまを登録すると表示されます');
 }
 $('#cSearch').oninput = renderCust;
 $('#cAdd').onclick = () => openCustomer(null);
-$('#cList').onclick = e => { if(e.target.closest('a.tel')) return; const li = e.target.closest('[data-cust]'); if(li) openCustomer(li.dataset.cust); };
+$('#cList').onclick = e => { const li = e.target.closest('[data-cust]'); if(!li) return; const c = S.customers[li.dataset.cust]; if(!c) return;
+  const ms = sum(inMonth('sales').filter(r=>r.customerId===c.id)), un = sum(arr('sales').filter(r=>isCredit(r) && r.customerId===c.id));
+  actionSheet(`🏠 ${esc(c.name)}`, dl([['地域', esc(c.area||'')], ['メモ', esc(c.note||'')], ['今月の売上', ms?yen(ms):''], ['未入金', un?`<span style="color:var(--red)">${yen(un)}</span>`:''], ['取引開始', c.since?esc(String(c.since).replace(/-/g,'/')):'']]), [
+    ...telsOf(c).map(t=>({label:`📞 ${esc(t)} に電話する`, href:telHref(t), cls:'sub'})),
+    {label:'✏️ 編集', cls:'pri', fn:()=>openCustomer(c.id)},
+    {label:'🗑 削除', cls:'red', fn:()=>confirmSheet(`「${esc(c.name)}」を削除しますか？`, 'これまでの販売記録は残ります。', () => { commit([del('customers', c.id)]); toast('削除しました'); })}]);
+};
 /* 電話番号：スプレッドシートで先頭の0が消えた番号を元に戻す（9〜10桁の数字だけで0始まりでないもの） */
 const fixTel = v => { const t = String(v==null?'':v).trim(); return /^[1-9]\d{8,9}$/.test(t) ? '0'+t : t; };
 const telsOf = c => [fixTel(c.phone), fixTel(c.phone2)].filter(Boolean);
@@ -1527,7 +1558,7 @@ $('#iStarter').onclick = () => {
   const add = STARTER.filter(x => !byName[x[0]]);
   const fix = Object.keys(RAW_OF).filter(n => byName[n] && !byName[n].rawItemId);
   if(!add.length && !fix.length) return toast('標準の品目はすべて登録済みです');
-  confirmSheet(add.length ? `標準の品目を${add.length}件入れますか？` : '加工品と原料のひもづけを設定しますか？', '奥さまのメモと価格表の内容です。あとから自由に直せます。（すでにある同じ名前の品目は入れません）', () => {
+  confirmSheet(add.length ? `標準の品目を${add.length}件入れますか？` : '加工品と原料のひもづけを設定しますか？', '奥さまのメモと価格表の内容です。あとから自由に編集できます。（すでにある同じ名前の品目は入れません）', () => {
     const ids = {}; Object.keys(byName).forEach(n => ids[n] = byName[n].id); add.forEach(x => ids[x[0]] = 'i'+uid());
     const ops = add.map(x => up('items', ids[x[0]], {name:x[0], cat:x[1], unit:x[2], price:x[3], packKg:x[4], yieldPct:x[5], rawItemId: RAW_OF[x[0]] ? (ids[RAW_OF[x[0]]]||'') : '', active:true, created:todayStr()}));
     fix.forEach(n => { const rid = ids[RAW_OF[n]]; if(rid) ops.push(up('items', byName[n].id, {...byName[n], rawItemId:rid})); });
@@ -1647,7 +1678,13 @@ function seed(){
 }
 
 /* ---------- sheet ---------- */
-function openSheet(html){ $('#sheet').innerHTML = html; $('#sheetBg').classList.add('on'); }
+/* タイルをタップしたときのメニュー（中身＋ボタン） */
+function actionSheet(title, body, acts){
+  openSheet(`<h3>${title}</h3>${body||''}<div class="acts-v">${acts.map((a,i)=>a.href?`<a class="btn ${a.cls||'sub'}" href="${a.href}" style="text-align:center;text-decoration:none">${a.label}</a>`:`<button class="btn ${a.cls||'sub'}" data-act="${i}">${a.label}</button>`).join('')}<button class="btn gray" data-close>閉じる</button></div>`);
+  $$('#sheet [data-act]').forEach(b => b.onclick = () => { const a = acts[+b.dataset.act]; if(!a.keep) closeSheet(); setTimeout(a.fn, a.keep?0:180); });
+}
+const dl = rows => `<dl class="dl">${rows.filter(r=>r[1]!==''&&r[1]!=null).map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+function openSheet(html){ $('#sheet').onclick = null; $('#sheet').innerHTML = html; $('#sheetBg').classList.add('on'); }
 function closeSheet(){ $('#sheetBg').classList.remove('on'); }
 $('#sheetBg').addEventListener('click', e => { if(e.target.id==='sheetBg' || e.target.closest('[data-close]')) closeSheet(); });
 function confirmSheet(title, sub, fn, okLabel='削除する', okClass='red'){
