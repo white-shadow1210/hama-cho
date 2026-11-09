@@ -683,15 +683,15 @@ function renderHome(){
   $('#hClose').textContent = S.closings[t] ? '🔒 今日は締め済みです（見る・直す）' : '🔒 今日の締めをする';
   // today
   const ts = onDate('sales', t), tb = onDate('purchases', t);
-  const tSale = sum(ts), tCost = sum(tb), tCust = new Set(ts.map(r=>r.customerId)).size;
+  const tSale = sum(ts), tCost = sumInc(tb), tCust = new Set(ts.map(r=>r.customerId)).size;
   const tCash = sum(ts.filter(r=>!isCredit(r)));
-  $('#kToday').innerHTML = kpi('sale','💴 売上',yen(tSale),`現金 ${yen(tCash)}`) + kpi('cost','🛒 仕入れ',yen(tCost)) + kpi('profit'+(tSale-tCost<0?' neg':''),'📈 差額',yen(tSale-tCost)) + kpi('','🚚 回ったお客さま',tCust+'軒',`${ordersOf(ts).length}件の注文`);
+  $('#kToday').innerHTML = kpi('sale','💴 売上',yen(tSale),`現金 ${yen(tCash)}`) + kpi('cost','🛒 仕入れ（税込）',yen(tCost),`税抜 ${yen(sum(tb))}`) + kpi('profit'+(tSale-tCost<0?' neg':''),'📈 差額',yen(tSale-tCost)) + kpi('','🚚 回ったお客さま',tCust+'軒',`${ordersOf(ts).length}件の注文`);
   // month
-  const mSale = sum(sales), mCost = sum(buys), p = mSale - mCost;
-  $('#kMonth').innerHTML = kpi('sale','💴 売上',yen(mSale),`${ordersOf(sales).length}件の注文`) + kpi('cost','🛒 仕入れ',yen(mCost)) + kpi('profit'+(p<0?' neg':''),'📈 差額（粗利）',yen(p), mSale?`粗利率 ${Math.round(p/mSale*100)}%`:'—') + kpi('unpaid','📒 未入金',yen(sum(sales.filter(isCredit))),'この月の掛け売り');
+  const mSale = sum(sales), mCost = sumInc(buys), p = mSale - mCost;
+  $('#kMonth').innerHTML = kpi('sale','💴 売上',yen(mSale),`${ordersOf(sales).length}件の注文`) + kpi('cost','🛒 仕入れ（税込）',yen(mCost),`税抜 ${yen(sum(buys))}`) + kpi('profit'+(p<0?' neg':''),'📈 差額（粗利）',yen(p), mSale?`粗利率 ${Math.round(p/mSale*100)}%`:'—') + kpi('unpaid','📒 未入金',yen(sum(sales.filter(isCredit))),'この月の掛け売り');
   // daily
   const days = new Date(y,m,0).getDate(), ds=[], dc=[];
-  const sByD = {}, cByD = {}; sales.forEach(r=>sByD[r.date]=(sByD[r.date]||0)+num(r.total)); buys.forEach(r=>cByD[r.date]=(cByD[r.date]||0)+num(r.total));
+  const sByD = {}, cByD = {}; sales.forEach(r=>sByD[r.date]=(sByD[r.date]||0)+num(r.total)); buys.forEach(r=>cByD[r.date]=(cByD[r.date]||0)+incOf(r));
   for(let i=1;i<=days;i++){ const k=`${S.month}-${pad(i)}`; ds.push(sByD[k]||0); dc.push(cByD[k]||0); }
   const mx = Math.max(1, ...ds, ...dc);
   $('#dailyChart').innerHTML = ds.map((v,i)=>`<div class="d ${`${S.month}-${pad(i+1)}`===t?'today':''}"><div class="b s" style="height:${v/mx*100}%"></div><div class="b c" style="height:${dc[i]/mx*100}%"></div></div>`).join('');
@@ -821,7 +821,7 @@ function renderClose(){
   const d = S.closeDate || (S.closeDate = todayStr()), cl = S.closings[d];
   $('#clDate').value = d;
   const sales = onDate('sales', d), buys = onDate('purchases', d), ords = ordersOf(sales);
-  const tSale = sum(sales), tCost = sum(buys), cash = sum(sales.filter(r=>!isCredit(r)));
+  const tSale = sum(sales), tCost = sumInc(buys), cash = sum(sales.filter(r=>!isCredit(r)));
   $('#clStatus').innerHTML = cl ? `<div class="note ok" style="margin:0">🔒 <b>締め済み</b>（${esc(String(cl.closedAt||'').slice(5,16).replace('T',' '))}）</div>` : `<div class="note" style="margin:0">🕘 まだ締めていません。${dayLabel(d)}</div>`;
   const pend = ordersOf(onDate('orders', d)).filter(o=>o.lines[0].status!=='配達済'), credit = ords.filter(isCredit), noPrice = sales.filter(r=>!num(r.unitPrice) && r.mode!=='おまけ');
   const al = [];
@@ -835,8 +835,8 @@ function renderClose(){
       o.lines.map(l=>`<div class="conf-line"><div>${esc(l.itemName)}<div class="q">${fmtQ(l.qty)}${esc(l.unit||'')} × ${yen(l.unitPrice)}${l.mode&&l.mode!=='いつも'?` <span class="tag o">${esc(l.mode)}</span>`:''}</div></div><div class="p">${yen(l.total)}</div></div>`).join('')
       + `<div style="text-align:right;margin-top:6px"><button class="btn sub" data-cl-edit="${esc(o.id)}" style="width:auto;padding:7px 12px;font-size:13px;margin:0">✏️ 直す</button></div>`)).join('')
     : emptyHTML('🚚','この日の販売はありません');
-  $('#clBuys').innerHTML = buys.length ? det(`${buys.length}品`, yen(tCost), buys.map(r=>`<div class="conf-line"><div>${esc(r.itemName)}<div class="q">${fmtQ(r.qty)}${esc(r.unit||'')} × ${yen(r.unitCost)}</div></div><div class="p">${yen(r.total)}</div></div>`).join('')) : emptyHTML('🛒','この日の仕入れはありません');
-  $('#clTotal').innerHTML = `<div class="kpis">${kpi('sale','💴 売上合計',yen(tSale),`現金 ${yen(cash)}`)}${kpi('cost','🛒 仕入れ合計',yen(tCost))}</div><div style="margin-top:10px">${kpi('profit'+(tSale-tCost<0?' neg':''),'📈 差額',yen(tSale-tCost), tSale?`差額率 ${Math.round((tSale-tCost)/tSale*100)}%`:'')}</div>`;
+  $('#clBuys').innerHTML = buys.length ? det(`${buys.length}品`, yen(tCost), buys.map(r=>`<div class="conf-line"><div>${esc(r.itemName)}<div class="q">${r.supplierName?esc(r.supplierName)+' ・ ':''}${fmtQ(r.qty)}${esc(r.unit||'')} × ${yen(r.unitCost)}</div></div><div class="p">${yen(incOf(r))}<small>税抜 ${yen(r.total)}</small></div></div>`).join('')) : emptyHTML('🛒','この日の仕入れはありません');
+  $('#clTotal').innerHTML = `<div class="kpis">${kpi('sale','💴 売上合計',yen(tSale),`現金 ${yen(cash)}`)}${kpi('cost','🛒 仕入れ合計（税込）',yen(tCost))}</div><div style="margin-top:10px">${kpi('profit'+(tSale-tCost<0?' neg':''),'📈 差額',yen(tSale-tCost), tSale?`差額率 ${Math.round((tSale-tCost)/tSale*100)}%`:'')}</div>`;
   $('#clActs').innerHTML = (cl ? `<button class="btn sub" id="clReopen">🔓 締めを解除して直す</button>` : `<button class="btn pri big" id="clDo">🔒 ${d===todayStr()?'今日':md(d)}を締める</button>`)
     + `<button class="btn gray" id="clBack">← ホームへ</button>` + (cfg.sheet ? `<button class="btn sub" id="clSheet">📊 スプレッドシートで見る</button>` : '');
   $('#clBack').onclick = () => goView('home');
@@ -1046,7 +1046,7 @@ function renderCart(){
 function updateBar(){
   const on = S.view==='sell' && !!S.cart, onBuy = S.view==='buy' && S.buyTab==='buy';
   $('#buyBar').classList.toggle('hidden', !onBuy);
-  if(onBuy){ const d = $('#bDate').value || todayStr(), rows = onDate('purchases', d); $('#bbDate').textContent = `${dayLabel(d)} の仕入れ合計 ${rows.length}品`; $('#bbTotal').innerHTML = `${yen(sum(rows))} <small style="font-weight:400;color:var(--mute)">（税込 ${yen(sum(rows.map(r=>({total:incOf(r)}))))}）</small>`; }
+  if(onBuy){ const d = $('#bDate').value || todayStr(), rows = onDate('purchases', d); $('#bbDate').textContent = `${dayLabel(d)} の仕入れ合計 ${rows.length}品`; $('#bbTotal').innerHTML = `${yen(sumInc(rows))} <small style="font-weight:400;color:var(--mute)">（税込・税抜 ${yen(sum(rows))}）</small>`; }
   $('#cartBar').classList.toggle('hidden', !on); document.body.classList.toggle('has-bar', on || onBuy);
   if(!on) return;
   const tot = S.cart.lines.reduce((s,l)=>s+lineCalc(l).total, 0);
@@ -1124,7 +1124,7 @@ function renderBuy(){
   fillSel($('#bItem'), itemOptions(true));
   const d = $('#bDate').value || todayStr(); $('#bDayLabel').textContent = md(d);
   const rows = onDate('purchases', d).sort((a,b)=>num(b.ts)-num(a.ts));
-  $('#bList').innerHTML = rows.length ? rows.map(r=>`<div class="li"><div class="ic">${icon(S.items[r.itemId])}</div><div class="m"><div class="t">${esc(r.itemName)}</div><div class="sub">${r.supplierName?esc(r.base?r.base+'・':'')+esc(r.supplierName)+' ・ ':''}${fmtQ(r.qty)}${esc(r.unit)} × ${yen(r.unitCost)}${num(r.taxRate)===10?' <span class="tag o">税10%</span>':''}${r.note?' ・'+esc(r.note):''}</div></div><div class="a">${yen(r.total)}<small>税込 ${yen(incOf(r))}</small></div><button class="btn sub" data-editbuy="${esc(r.id)}" style="padding:8px 10px;font-size:13px">直す</button><button class="btn del" data-del="purchases:${esc(r.id)}">削除</button></div>`).join('') + `<div class="li" style="border-top:2px solid var(--line)"><div class="m"><div class="t">合計</div></div><div class="a" style="color:var(--orange)">${yen(sum(rows))}<small>税込 ${yen(sum(rows.map(r=>({total:incOf(r)}))))}</small></div></div>` : emptyHTML('🛒','この日の仕入れはまだありません');
+  $('#bList').innerHTML = rows.length ? rows.map(r=>`<div class="li"><div class="ic">${icon(S.items[r.itemId])}</div><div class="m"><div class="t">${esc(r.itemName)}</div><div class="sub">${r.supplierName?esc(r.base?r.base+'・':'')+esc(r.supplierName)+' ・ ':''}${fmtQ(r.qty)}${esc(r.unit)} × ${yen(r.unitCost)}${num(r.taxRate)===10?' <span class="tag o">税10%</span>':''}${r.note?' ・'+esc(r.note):''}</div></div><div class="a">${yen(r.total)}<small>税込 ${yen(incOf(r))}</small></div><button class="btn sub" data-editbuy="${esc(r.id)}" style="padding:8px 10px;font-size:13px">直す</button><button class="btn del" data-del="purchases:${esc(r.id)}">削除</button></div>`).join('') + `<div class="li" style="border-top:2px solid var(--line)"><div class="m"><div class="t">合計</div></div><div class="a" style="color:var(--orange)">${yen(sum(rows))}<small>税込 ${yen(sumInc(rows))}</small></div></div>` + suppTotals(rows) : emptyHTML('🛒','この日の仕入れはまだありません');
   renderSupp();
   calcBuy();
 }
@@ -1137,9 +1137,15 @@ function onBuyItem(){
 }
 $('#bItem').onchange = onBuyItem;
 $('#bQuick').onclick = e => { const b=e.target.closest('[data-fill]'); if(b){ $('#bCost').value=b.dataset.fill; calcBuy(); } };
+const sumInc = rows => rows.reduce((t,r)=>t+incOf(r),0);
 const incOf = r => num(r.totalInc) || Math.round(num(r.total)*(1+(num(r.taxRate)||8)/100));
 function calcBuy(){ const t = Math.round(num($('#bQty').value)*num($('#bCost').value)), r = num($('#bTax').value)||8; $('#bTotal').textContent = yen(t); $('#bTotalInc').textContent = t ? `税込 ${yen(Math.round(t*(1+r/100)))}（${r}%）` : ''; }
 $('#bTax').onchange = calcBuy;
+function suppTotals(rows){
+  const g = {}; rows.forEach(r => { const k = r.supplierName ? (r.base?r.base+'・':'')+r.supplierName : '仕入先の指定なし'; const x = g[k] = g[k] || {n:0, ex:0, inc:0}; x.n++; x.ex += num(r.total); x.inc += incOf(r); });
+  const list = Object.entries(g).sort((a,b)=>b[1].inc-a[1].inc);
+  return `<div style="margin-top:14px;padding:10px 12px;background:var(--beige2);border-radius:12px"><div style="font-weight:700;color:var(--navy);margin-bottom:4px">🏪 仕入先ごとの合計</div>${list.map(([k,x])=>`<div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line)"><span>${esc(k)} <small style="color:var(--mute)">${x.n}品</small></span><span style="text-align:right"><b>${yen(x.inc)}</b><small style="display:block;color:var(--mute);font-size:12px">税抜 ${yen(x.ex)}</small></span></div>`).join('')}</div>`;
+}
 $('#bbPrev').onclick = () => { $('#bDate').value = addDays($('#bDate').value||todayStr(), -1); syncDateMonth($('#bDate').value); renderAll(); };
 $('#bbNext').onclick = () => { $('#bDate').value = addDays($('#bDate').value||todayStr(), 1); syncDateMonth($('#bDate').value); renderAll(); };
 /* 仕入先（拠点ごとに固定表示） */
