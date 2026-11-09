@@ -341,7 +341,9 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
         <button class="btn sub" id="pAddOut" style="width:100%">＋ できあがりを追加</button>
         <label class="f">メモ（任意）</label><input id="pNote" placeholder="例：半分は干物用">
         <div id="pYield"></div>
+        <div id="pEditNote"></div>
         <button class="btn pri" id="pSave">加工を記録する</button>
+        <button class="btn gray hidden" id="pCancel">直すのをやめる</button>
       </div>
       <div class="card"><h2>📋 この日の加工 <small id="pDayLabel"></small></h2><div class="list" id="pList"></div></div>
       <div class="card" id="stockCard">
@@ -1269,7 +1271,7 @@ function renderProcBase(){
   const d = $('#pDate').value || todayStr(); $('#pDayLabel').textContent = md(d);
   const g = {}; onDate('processes', d).forEach(r => (g[r.batchId] = g[r.batchId] || []).push(r));
   const batches = Object.values(g).sort((a,b)=>num(b[0].ts)-num(a[0].ts));
-  $('#pList').innerHTML = batches.length ? batches.map(b => { const from = b.find(r=>num(r.fromQty)) || b[0]; return `<div class="li"><div class="ic">🔪</div><div class="m"><div class="t">${esc(from.fromItemName)} ${fmtQ(sum(b,'fromQty'))}${esc(from.fromUnit||'')}</div><div class="sub">→ ${b.map(r=>`${esc(r.toItemName)} ${fmtQ(r.toQty)}${esc(r.toUnit||'')}`).join('、')}${from.note?' ・'+esc(from.note):''}${yieldInfo(b,from)}</div></div><button class="btn del" data-delbatch="${esc(b[0].batchId)}">削除</button></div>`; }).join('') : emptyHTML('🔪','この日の加工はまだありません');
+  $('#pList').innerHTML = batches.length ? batches.map(b => { const from = b.find(r=>num(r.fromQty)) || b[0]; return `<div class="li"><div class="ic">🔪</div><div class="m"><div class="t">${esc(from.fromItemName)} ${fmtQ(sum(b,'fromQty'))}${esc(from.fromUnit||'')}</div><div class="sub">→ ${b.map(r=>`${esc(r.toItemName)} ${fmtQ(r.toQty)}${esc(r.toUnit||'')}`).join('、')}${from.note?' ・'+esc(from.note):''}${yieldInfo(b,from)}</div></div><button class="btn sub" data-editbatch="${esc(b[0].batchId)}" style="padding:8px 10px;font-size:13px">編集</button><button class="btn del" data-delbatch="${esc(b[0].batchId)}">削除</button></div>`; }).join('') : emptyHTML('🔪','この日の加工はまだありません');
 }
 function renderProc(){ renderProcBase(); updateYield(); renderPlan(); renderStock(); }
 /* ---- 在庫：最後に数えた数 ＋ その後にできた数 − その後に売れた・使った数 ---- */
@@ -1371,12 +1373,26 @@ $('#pSave').onclick = () => {
   const f = S.items[$('#pFrom').value], fq = num($('#pFromQty').value), d = $('#pDate').value || todayStr();
   const valid = outs.filter(o => S.items[o.itemId] && num(o.qty));
   if(!f) return toast('使った原料を選んでください'); if(!fq) return toast('使った量を入れてください'); if(!valid.length) return toast('できあがった商品と数を入れてください');
-  const batchId = 'p'+uid(), ts = Date.now(), note = $('#pNote').value.trim();
-  commit(valid.map((o,i) => { const it=S.items[o.itemId]; return up('processes', uid(), {batchId, date:d, fromItemId:f.id, fromItemName:f.name, fromQty: i===0?fq:0, fromUnit:f.unit||'', toItemId:it.id, toItemName:it.name, toQty:num(o.qty), toUnit:it.unit||'', note, ts:ts+i}); }));
+  const ed = S.pEdit, batchId = ed ? ed.batchId : 'p'+uid(), ts = ed ? ed.ts : Date.now(), note = $('#pNote').value.trim();
+  commit((ed ? ed.ids.map(id=>del('processes', id)) : []).concat(valid.map((o,i) => { const it=S.items[o.itemId]; return up('processes', uid(), {batchId, date:d, fromItemId:f.id, fromItemName:f.name, fromQty: i===0?fq:0, fromUnit:f.unit||'', toItemId:it.id, toItemName:it.name, toQty:num(o.qty), toUnit:it.unit||'', note, ts:ts+i}); })));
+  endProcEdit();
   outs = [{k:uid(), itemId:'', qty:''}]; $('#pFromQty').value=''; $('#pNote').value=''; $('#pFrom').value=''; renderProc();
-  toast(`${esc(f.name)} → ${valid.map(o=>esc(S.items[o.itemId].name)).join('・')} を記録しました`);
+  toast(`${esc(f.name)} → ${valid.map(o=>esc(S.items[o.itemId].name)).join('・')} を${ed?'直しました':'記録しました'}`);
 };
-$('#pList').onclick = e => { const b=e.target.closest('[data-delbatch]'); if(!b) return; const rows=arr('processes').filter(r=>r.batchId===b.dataset.delbatch); confirmSheet('この加工の記録を削除しますか？', `${esc(rows[0]?.fromItemName||'')} → ${rows.map(r=>esc(r.toItemName)).join('・')}`, ()=>{ commit(rows.map(r=>del('processes',r.id))); toast('削除しました'); }); };
+function endProcEdit(){ S.pEdit = null; $('#pSave').textContent = '加工を記録する'; $('#pCancel').classList.add('hidden'); $('#pEditNote').innerHTML = ''; }
+function startProcEdit(batchId){
+  const rows = arr('processes').filter(r=>r.batchId===batchId).sort((a,b)=>num(a.ts)-num(b.ts)); if(!rows.length) return;
+  const from = rows.find(r=>num(r.fromQty)) || rows[0];
+  S.pEdit = {batchId, ids:rows.map(r=>r.id), ts:num(rows[0].ts)||Date.now()};
+  $('#pDate').value = from.date; $('#pFrom').value = from.fromItemId; $('#pFromQty').value = sum(rows,'fromQty') || ''; $('#pNote').value = from.note||'';
+  outs = rows.map(r=>({k:uid(), itemId:r.toItemId, qty:r.toQty}));
+  renderProc(); $('#pFrom').value = from.fromItemId; renderProcBase(); updateYield();
+  $('#pSave').textContent = 'この内容に直す'; $('#pCancel').classList.remove('hidden');
+  $('#pEditNote').innerHTML = `<div class="note info">✏️ ${esc(from.fromItemName)} の加工を直しています。直したら「この内容に直す」を押してください。</div>`;
+  $('#pFrom').scrollIntoView({behavior:'smooth', block:'center'});
+}
+$('#pCancel').onclick = () => { endProcEdit(); outs = [{k:uid(), itemId:'', qty:''}]; $('#pFromQty').value=''; $('#pNote').value=''; $('#pFrom').value=''; renderProc(); };
+$('#pList').onclick = e => { const eb=e.target.closest('[data-editbatch]'); if(eb){ startProcEdit(eb.dataset.editbatch); return; } const b=e.target.closest('[data-delbatch]'); if(!b) return; const rows=arr('processes').filter(r=>r.batchId===b.dataset.delbatch); confirmSheet('この加工の記録を削除しますか？', `${esc(rows[0]?.fromItemName||'')} → ${rows.map(r=>esc(r.toItemName)).join('・')}`, ()=>{ commit(rows.map(r=>del('processes',r.id))); toast('削除しました'); }); };
 
 /* recon */
 $('#reconTabs').onclick = e => { const b=e.target.closest('[data-p]'); if(!b) return; S.reconP=b.dataset.p; $$('#reconTabs button').forEach(x=>x.classList.toggle('on',x===b)); renderRecon(); };
