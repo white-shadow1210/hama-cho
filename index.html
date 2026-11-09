@@ -331,13 +331,10 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
         <h2>🔪 加工を記録</h2>
         <div class="hint" style="margin-top:-6px">仕入れた魚を開き・切り身・パックなどにしたときに記録します。数の確認に使います。</div>
         <label class="f">日付</label><input type="date" id="pDate">
-        <label class="f">使った原料</label>
+        <label class="f">使った原料 <small style="font-weight:400;color:var(--mute)">（いくつでも選べます）</small></label>
         <div id="pFromBuys"></div>
-        <select id="pFrom"></select>
-        <div class="grid2">
-          <div><label class="f">使った量</label><input type="number" inputmode="decimal" id="pFromQty" placeholder="0"></div>
-          <div><label class="f">単位</label><input id="pFromUnit" disabled></div>
-        </div>
+        <div id="pIns"></div>
+        <button class="btn sub" id="pAddIn" style="margin:0 0 4px">＋ 原料を追加</button>
         <label class="f">できあがった商品</label>
         <div id="pOuts"></div>
         <button class="btn sub" id="pAddOut" style="width:100%">＋ できあがりを追加</button>
@@ -1264,18 +1261,20 @@ function renderBuyPlan(){
 $('#bpBody').addEventListener('input', e => { const rid = e.target.dataset.extra; if(!rid) return; const d = $('#bDate').value || todayStr(); planExtra[d+':'+rid] = e.target.value; const el = $(`[data-bp="${rid}"]`); if(el) el.innerHTML = bpLine(rid, d); });
 
 /* process */
-let outs = [{k:uid(), itemId:'', qty:''}];
+let outs = [{k:uid(), itemId:'', qty:''}], ins = [{k:uid(), itemId:'', qty:''}];
 function renderProcBase(){
   const dB = $('#pDate').value || todayStr(), bought = boughtFor(dB);
-  fillSel($('#pFrom'), (bought.length ? `<option value="">原料を選ぶ</option><optgroup label="📦 この日に仕入れたもの">${bought.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}（仕入れ ${fmtQ(x.qty)}${esc(x.unit)}）</option>`).join('')}</optgroup>` + itemOptions(true,'').replace(/^<option value="">[^<]*<\/option>/,'') : itemOptions(true,'原料を選ぶ')));
-  $('#pFromBuys').innerHTML = bought.length ? `<div class="hint" style="margin:0 0 6px">この日の仕入れからえらぶ（タップで原料と量が入ります）</div><div class="chips" style="margin-bottom:8px">${bought.map(x=>`<button class="chip ${x.left<=0?'':'on'}" data-pbuy="${esc(x.id)}" ${x.left<=0?'style="opacity:.5"':''}>${esc(x.name)} ${fmtQ(x.qty)}${esc(x.unit)}${x.left<=0?' ✓':x.used?` <small>のこり${fmtQ(x.left)}</small>`:''}</button>`).join('')}</div>` : `<div class="hint" style="margin:0 0 6px">この日の仕入れはまだありません。下から原料を選んでください。</div>`;
-  const f = S.items[$('#pFrom').value]; $('#pFromUnit').value = f ? (f.unit||'') : '';
+  const inOpts = bought.length ? `<option value="">原料を選ぶ</option><optgroup label="📦 この日に仕入れたもの">${bought.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</optgroup>` + itemOptions(true,'').replace(/^<option value="">[^<]*<\/option>/,'') : itemOptions(true,'原料を選ぶ');
+  $('#pIns').innerHTML = ins.map(o => { const it=S.items[o.itemId]; return `<div class="grid3" data-i="${o.k}" style="grid-template-columns:1.6fr 1fr auto;align-items:center;margin-bottom:8px"><select data-if="itemId">${inOpts}</select><div class="step" style="border-radius:12px"><input data-if="qty" type="number" inputmode="decimal" value="${esc(o.qty)}" placeholder="量"><span class="u">${esc(it?it.unit||'':'')}</span></div>${ins.length>1?'<button class="btn del" data-irm>×</button>':'<span></span>'}</div>`; }).join('');
+  $$('#pIns [data-i]').forEach(row => { const o = ins.find(x=>x.k===row.dataset.i); row.querySelector('select').value = o.itemId; });
+  const picked = new Set(ins.map(o=>o.itemId));
+  $('#pFromBuys').innerHTML = bought.length ? `<div class="hint" style="margin:0 0 6px">この日の仕入れからえらぶ（タップで追加・もう一度タップで外す）</div><div class="chips" style="margin-bottom:8px">${bought.map(x=>`<button class="chip ${picked.has(x.id)?'on':''}" data-pbuy="${esc(x.id)}" ${x.left<=0&&!picked.has(x.id)?'style="opacity:.5"':''}>${picked.has(x.id)?'✓ ':''}${esc(x.name)} ${fmtQ(x.qty)}${esc(x.unit)}${x.left<=0?' <small>使用済み</small>':x.used?` <small>のこり${fmtQ(x.left)}</small>`:''}</button>`).join('')}</div>` : `<div class="hint" style="margin:0 0 6px">この日の仕入れはまだありません。下から原料を選んでください。</div>`;
   $('#pOuts').innerHTML = outs.map(o => { const it=S.items[o.itemId]; return `<div class="grid3" data-o="${o.k}" style="grid-template-columns:1.6fr 1fr auto;align-items:center;margin-bottom:8px"><select data-of="itemId">${itemOptions(true,'商品を選ぶ')}</select><div class="step" style="border-radius:12px"><input data-of="qty" type="number" inputmode="decimal" value="${esc(o.qty)}" placeholder="数"><span class="u">${esc(it?it.unit||'':'')}</span></div>${outs.length>1?'<button class="btn del" data-orm>×</button>':'<span></span>'}</div>`; }).join('');
   $$('#pOuts [data-o]').forEach(row => { const o = outs.find(x=>x.k===row.dataset.o); row.querySelector('select').value = o.itemId; });
   const d = $('#pDate').value || todayStr(); $('#pDayLabel').textContent = md(d);
   const g = {}; onDate('processes', d).forEach(r => (g[r.batchId] = g[r.batchId] || []).push(r));
   const batches = Object.values(g).sort((a,b)=>num(b[0].ts)-num(a[0].ts));
-  $('#pList').innerHTML = batches.length ? batches.map(b => { const from = b.find(r=>num(r.fromQty)) || b[0]; return `<div class="li"><div class="ic">🔪</div><div class="m"><div class="t">${esc(from.fromItemName)} ${fmtQ(sum(b,'fromQty'))}${esc(from.fromUnit||'')}</div><div class="sub">→ ${b.map(r=>`${esc(r.toItemName)} ${fmtQ(r.toQty)}${esc(r.toUnit||'')}`).join('、')}${from.note?' ・'+esc(from.note):''}${yieldInfo(b,from)}</div></div><button class="btn sub" data-editbatch="${esc(b[0].batchId)}" style="padding:8px 10px;font-size:13px">編集</button><button class="btn del" data-delbatch="${esc(b[0].batchId)}">削除</button></div>`; }).join('') : emptyHTML('🔪','この日の加工はまだありません');
+  $('#pList').innerHTML = batches.length ? batches.map(b => { const from = b.find(r=>num(r.fromQty)) || b[0]; return `<div class="li"><div class="ic">🔪</div><div class="m"><div class="t">${insOf(b).map(x=>`${esc(x.name)} ${fmtQ(x.qty)}${esc(x.unit)}`).join('・')}</div><div class="sub">→ ${b.filter(r=>r.toItemId).map(r=>`${esc(r.toItemName)} ${fmtQ(r.toQty)}${esc(r.toUnit||'')}`).join('、')}${from.note?' ・'+esc(from.note):''}${yieldInfo(b)}</div></div><button class="btn sub" data-editbatch="${esc(b[0].batchId)}" style="padding:8px 10px;font-size:13px">編集</button><button class="btn del" data-delbatch="${esc(b[0].batchId)}">削除</button></div>`; }).join('') : emptyHTML('🔪','この日の加工はまだありません');
 }
 function renderProc(){ renderProcBase(); updateYield(); renderPlan(); renderStock(); }
 /* ---- 在庫：最後に数えた数 ＋ その後にできた数 − その後に売れた・使った数 ---- */
@@ -1330,17 +1329,19 @@ $('#stList').onclick = e => {
   toast(`${esc(S.items[S.pendingAdd].name)} を売るお客さまを選んでください`, 2600);
 };
 const netKg = rows => rows.reduce((t,r) => { const it = S.items[r.toItemId]; return t + (it && num(it.packKg) ? num(r.toQty)*num(it.packKg) : 0); }, 0);
-function yieldInfo(b, from){ const net = netKg(b), fq = sum(b,'fromQty'); if(!net) return ''; return `<br><span style="color:var(--green)">正味 ${fmtQ(net)}kg${from.fromUnit==='kg'&&fq?`・歩留まり ${Math.round(net/fq*100)}%`:''}</span>`; }
+/* 1回の加工で使った原料（複数あり） */
+function insOf(b){ const g = {}; b.filter(r=>num(r.fromQty)).forEach(r => { const x = g[r.fromItemId] = g[r.fromItemId] || {id:r.fromItemId, name:r.fromItemName, unit:r.fromUnit||'', qty:0}; x.qty += num(r.fromQty); }); const a = Object.values(g); return a.length ? a : [{id:b[0].fromItemId, name:b[0].fromItemName, unit:b[0].fromUnit||'', qty:0}]; }
+function yieldInfo(b){ const net = netKg(b), xs = insOf(b), fq = xs.reduce((t,x)=>t+x.qty,0); if(!net) return ''; return `<br><span style="color:var(--green)">正味 ${fmtQ(net)}kg${xs.every(x=>x.unit==='kg')&&fq?`・歩留まり ${Math.round(net/fq*100)}%`:''}</span>`; }
 function updateYield(){
   const box = $('#pYield'); if(!box) return;
-  const f = S.items[$('#pFrom').value], fq = num($('#pFromQty').value);
+  const vin = ins.filter(o=>S.items[o.itemId] && num(o.qty)), fq = vin.reduce((t,o)=>t+num(o.qty),0);
+  const f = vin.length===1 ? S.items[vin[0].itemId] : null;
   let net = 0; const miss = [];
   outs.forEach(o => { const it = S.items[o.itemId]; if(!it || !num(o.qty)) return; if(num(it.packKg)) net += num(o.qty)*num(it.packKg); else miss.push(it.name); });
   if(!net){ box.innerHTML = ''; return; }
-  const kg = !!(f && f.unit==='kg' && fq), pct = kg ? Math.round(net/fq*100) : 0, tgt = f ? num(f.yieldPct) : 0, low = kg && tgt && pct < tgt-5;
+  const kg = !!(vin.length && fq && vin.every(o=>S.items[o.itemId].unit==='kg')), pct = kg ? Math.round(net/fq*100) : 0, tgt = f ? num(f.yieldPct) : 0, low = kg && tgt && pct < tgt-5;
   box.innerHTML = `<div class="total" style="flex-direction:column;align-items:stretch;gap:6px"><div style="display:flex;justify-content:space-between;align-items:baseline"><span>正味の重さ</span><b style="font-size:20px">${fmtQ(net)}kg</b></div>${kg?`<div style="display:flex;justify-content:space-between;align-items:baseline"><span>歩留まり（正味÷使った量）</span><b style="font-size:20px;color:${low?'var(--red)':'var(--green)'}">${pct}%</b></div>${tgt?`<div class="hint" style="margin:0">目安 ${tgt}%${low?'：目安より低めです。入力もれか、切り落としが多かったかもしれません':''}</div>`:''}`:''}${miss.length?`<div class="hint" style="margin:0;color:var(--orange)">重さ未設定：${miss.map(esc).join('、')}（計算に入っていません）</div>`:''}</div>`;
 }
-$('#pFromQty').oninput = updateYield;
 let plan = {raw:'', rows:[{k:uid(), itemId:'', qty:''}], yield:''};
 function renderPlan(){
   const raws = activeItems().filter(i => i.unit==='kg');
@@ -1376,42 +1377,53 @@ function boughtFor(d){
 }
 function pickBuy(id){
   const x = boughtFor($('#pDate').value || todayStr()).find(b=>b.id===id); if(!x) return;
-  $('#pFrom').value = id; renderProc();
-  if(x.sameUnit && x.left > 0) $('#pFromQty').value = x.left;
-  updateYield();
+  const have = ins.find(o=>o.itemId===id);
+  if(have){ ins = ins.filter(o=>o!==have); if(!ins.length) ins = [{k:uid(), itemId:'', qty:''}]; }
+  else { const q = x.sameUnit && x.left > 0 ? x.left : ''; const empty = ins.find(o=>!o.itemId); if(empty){ empty.itemId = id; empty.qty = q; } else ins.push({k:uid(), itemId:id, qty:q}); }
+  renderProc();
 }
 $('#pFromBuys').onclick = e => { const b = e.target.closest('[data-pbuy]'); if(b) pickBuy(b.dataset.pbuy); };
-$('#pFrom').onchange = () => { const id = $('#pFrom').value; if(id && id!=='__new' && !$('#pFromQty').value && boughtFor($('#pDate').value||todayStr()).some(b=>b.id===id)){ pickBuy(id); return; }  if($('#pFrom').value==='__new'){ $('#pFrom').value=''; openItem(null, id=>{ renderProc(); $('#pFrom').value=id; renderProc(); }); return; } renderProc(); };
+$('#pAddIn').onclick = () => { ins.push({k:uid(), itemId:'', qty:''}); renderProc(); };
+$('#pIns').addEventListener('change', e => { const row=e.target.closest('[data-i]'); if(!row||e.target.dataset.if!=='itemId') return; const o=ins.find(x=>x.k===row.dataset.i);
+  if(e.target.value==='__new'){ e.target.value=o.itemId; openItem(null, id=>{ o.itemId=id; renderProc(); }); return; }
+  o.itemId=e.target.value; if(!o.qty){ const x = boughtFor($('#pDate').value||todayStr()).find(b=>b.id===o.itemId); if(x && x.sameUnit && x.left>0) o.qty = x.left; } renderProc(); });
+$('#pIns').addEventListener('input', e => { const row=e.target.closest('[data-i]'); if(!row||e.target.dataset.if!=='qty') return; ins.find(x=>x.k===row.dataset.i).qty=e.target.value; updateYield(); });
+$('#pIns').addEventListener('click', e => { if(!e.target.closest('[data-irm]')) return; const row=e.target.closest('[data-i]'); ins=ins.filter(x=>x.k!==row.dataset.i); renderProc(); });
 $('#pDate').onchange = () => { syncDateMonth($('#pDate').value); renderAll(); };
 $('#pAddOut').onclick = () => { outs.push({k:uid(), itemId:'', qty:''}); renderProc(); };
 $('#pOuts').addEventListener('change', e => { const row=e.target.closest('[data-o]'); if(!row||e.target.dataset.of!=='itemId') return; const o=outs.find(x=>x.k===row.dataset.o);
   if(e.target.value==='__new'){ e.target.value=o.itemId; openItem(null, id=>{ o.itemId=id; renderProc(); }, {cat:'干物・加工品'}); return; } o.itemId=e.target.value; renderProc(); });
 $('#pOuts').addEventListener('input', e => { const row=e.target.closest('[data-o]'); if(!row||e.target.dataset.of!=='qty') return; outs.find(x=>x.k===row.dataset.o).qty=e.target.value; updateYield(); });
 $('#pOuts').addEventListener('click', e => { if(!e.target.closest('[data-orm]')) return; const row=e.target.closest('[data-o]'); outs=outs.filter(x=>x.k!==row.dataset.o); renderProc(); });
+const resetProcForm = () => { ins = [{k:uid(), itemId:'', qty:''}]; outs = [{k:uid(), itemId:'', qty:''}]; $('#pNote').value=''; renderProc(); };
 $('#pSave').onclick = () => {
-  const f = S.items[$('#pFrom').value], fq = num($('#pFromQty').value), d = $('#pDate').value || todayStr();
-  const valid = outs.filter(o => S.items[o.itemId] && num(o.qty));
-  if(!f) return toast('使った原料を選んでください'); if(!fq) return toast('使った量を入れてください'); if(!valid.length) return toast('できあがった商品と数を入れてください');
+  const d = $('#pDate').value || todayStr();
+  const vin = ins.filter(o => S.items[o.itemId] && num(o.qty)), valid = outs.filter(o => S.items[o.itemId] && num(o.qty));
+  if(!ins.some(o=>S.items[o.itemId])) return toast('使った原料を選んでください'); if(!vin.length) return toast('使った量を入れてください'); if(!valid.length) return toast('できあがった商品と数を入れてください');
   const ed = S.pEdit, batchId = ed ? ed.batchId : 'p'+uid(), ts = ed ? ed.ts : Date.now(), note = $('#pNote').value.trim();
-  commit((ed ? ed.ids.map(id=>del('processes', id)) : []).concat(valid.map((o,i) => { const it=S.items[o.itemId]; return up('processes', uid(), {batchId, date:d, fromItemId:f.id, fromItemName:f.name, fromQty: i===0?fq:0, fromUnit:f.unit||'', toItemId:it.id, toItemName:it.name, toQty:num(o.qty), toUnit:it.unit||'', note, ts:ts+i}); })));
-  endProcEdit();
-  outs = [{k:uid(), itemId:'', qty:''}]; $('#pFromQty').value=''; $('#pNote').value=''; $('#pFrom').value=''; renderProc();
-  toast(`${esc(f.name)} → ${valid.map(o=>esc(S.items[o.itemId].name)).join('・')} を${ed?'直しました':'記録しました'}`);
+  const n = Math.max(vin.length, valid.length), rows = [];
+  for(let i=0;i<n;i++){
+    const fi = vin[i] || vin[0], f = S.items[fi.itemId], o = valid[i], it = o && S.items[o.itemId];
+    rows.push(up('processes', uid(), {batchId, date:d, fromItemId:f.id, fromItemName:f.name, fromQty: vin[i]?num(fi.qty):0, fromUnit:f.unit||'', toItemId:it?it.id:'', toItemName:it?it.name:'', toQty:it?num(o.qty):0, toUnit:it?it.unit||'':'', note, ts:ts+i}));
+  }
+  commit((ed ? ed.ids.map(id=>del('processes', id)) : []).concat(rows));
+  endProcEdit(); resetProcForm();
+  toast(`${vin.map(o=>esc(S.items[o.itemId].name)).join('・')} → ${valid.map(o=>esc(S.items[o.itemId].name)).join('・')} を${ed?'直しました':'記録しました'}`);
 };
 function endProcEdit(){ S.pEdit = null; $('#pSave').textContent = '加工を記録する'; $('#pCancel').classList.add('hidden'); $('#pEditNote').innerHTML = ''; }
 function startProcEdit(batchId){
   const rows = arr('processes').filter(r=>r.batchId===batchId).sort((a,b)=>num(a.ts)-num(b.ts)); if(!rows.length) return;
-  const from = rows.find(r=>num(r.fromQty)) || rows[0];
   S.pEdit = {batchId, ids:rows.map(r=>r.id), ts:num(rows[0].ts)||Date.now()};
-  $('#pDate').value = from.date; $('#pFrom').value = from.fromItemId; $('#pFromQty').value = sum(rows,'fromQty') || ''; $('#pNote').value = from.note||'';
-  outs = rows.map(r=>({k:uid(), itemId:r.toItemId, qty:r.toQty}));
-  renderProc(); $('#pFrom').value = from.fromItemId; renderProcBase(); updateYield();
+  $('#pDate').value = rows[0].date; $('#pNote').value = rows[0].note||'';
+  ins = insOf(rows).map(x=>({k:uid(), itemId:x.id, qty:x.qty||''}));
+  outs = rows.filter(r=>r.toItemId).map(r=>({k:uid(), itemId:r.toItemId, qty:r.toQty})); if(!outs.length) outs = [{k:uid(), itemId:'', qty:''}];
+  renderProc();
   $('#pSave').textContent = 'この内容に直す'; $('#pCancel').classList.remove('hidden');
-  $('#pEditNote').innerHTML = `<div class="note info">✏️ ${esc(from.fromItemName)} の加工を直しています。直したら「この内容に直す」を押してください。</div>`;
-  $('#pFrom').scrollIntoView({behavior:'smooth', block:'center'});
+  $('#pEditNote').innerHTML = `<div class="note info">✏️ ${insOf(rows).map(x=>esc(x.name)).join('・')} の加工を直しています。直したら「この内容に直す」を押してください。</div>`;
+  $('#pIns').scrollIntoView({behavior:'smooth', block:'center'});
 }
-$('#pCancel').onclick = () => { endProcEdit(); outs = [{k:uid(), itemId:'', qty:''}]; $('#pFromQty').value=''; $('#pNote').value=''; $('#pFrom').value=''; renderProc(); };
-$('#pList').onclick = e => { const eb=e.target.closest('[data-editbatch]'); if(eb){ startProcEdit(eb.dataset.editbatch); return; } const b=e.target.closest('[data-delbatch]'); if(!b) return; const rows=arr('processes').filter(r=>r.batchId===b.dataset.delbatch); confirmSheet('この加工の記録を削除しますか？', `${esc(rows[0]?.fromItemName||'')} → ${rows.map(r=>esc(r.toItemName)).join('・')}`, ()=>{ commit(rows.map(r=>del('processes',r.id))); toast('削除しました'); }); };
+$('#pCancel').onclick = () => { endProcEdit(); resetProcForm(); };
+$('#pList').onclick = e => { const eb=e.target.closest('[data-editbatch]'); if(eb){ startProcEdit(eb.dataset.editbatch); return; } const b=e.target.closest('[data-delbatch]'); if(!b) return; const rows=arr('processes').filter(r=>r.batchId===b.dataset.delbatch); confirmSheet('この加工の記録を削除しますか？', `${insOf(rows).map(x=>esc(x.name)).join('・')} → ${rows.filter(r=>r.toItemId).map(r=>esc(r.toItemName)).join('・')}`, ()=>{ commit(rows.map(r=>del('processes',r.id))); toast('削除しました'); }); };
 
 /* recon */
 $('#reconTabs').onclick = e => { const b=e.target.closest('[data-p]'); if(!b) return; S.reconP=b.dataset.p; $$('#reconTabs button').forEach(x=>x.classList.toggle('on',x===b)); renderRecon(); };
@@ -1422,7 +1434,7 @@ function renderRecon(){
   const pick = t => S.reconP==='day' ? onDate(t, d) : inMonth(t);
   const g = {}; const key = (id,name,unit) => { const k = id+'|'+(unit||''); return g[k] = g[k] || {id, name, unit:unit||'', buy:0, made:0, used:0, sold:0, ordered:0}; };
   pick('purchases').forEach(r => key(r.itemId, r.itemName, r.unit).buy += num(r.qty));
-  pick('processes').forEach(r => { if(num(r.fromQty)) key(r.fromItemId, r.fromItemName, r.fromUnit).used += num(r.fromQty); key(r.toItemId, r.toItemName, r.toUnit).made += num(r.toQty); });
+  pick('processes').forEach(r => { if(num(r.fromQty)) key(r.fromItemId, r.fromItemName, r.fromUnit).used += num(r.fromQty); if(r.toItemId) key(r.toItemId, r.toItemName, r.toUnit).made += num(r.toQty); });
   pick('sales').forEach(r => key(r.itemId, r.itemName, r.unit).sold += num(r.qty));
   pick('orders').filter(r => r.status!=='配達済').forEach(r => key(r.itemId, r.itemName, r.unit).ordered += num(r.qty));
   const rows = Object.values(g).map(x => ({...x, left: Math.round((x.buy + x.made - x.used - x.sold)*100)/100}))
