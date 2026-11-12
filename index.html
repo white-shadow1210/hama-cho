@@ -297,7 +297,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
       <div class="card"><h2 id="listTitle">📋 この日の販売</h2><div class="list" id="orderList"></div></div>
     </div>
     <div id="sellCart" class="hidden">
-      <button class="btn sub" id="cartBack2" style="width:auto;margin:0 0 10px;padding:10px 16px;font-size:15px">‹ 戻る</button>
+      <div style="display:flex;gap:8px;margin:0 0 10px"><button class="btn sub" id="cartBack2" style="width:auto;margin:0;padding:10px 16px;font-size:15px">‹ 戻る</button><button class="btn sub" id="cartDate" style="width:auto;margin:0;padding:10px 16px;font-size:15px;margin-left:auto">📅 日付</button></div>
       <div class="cust-head"><div class="n" id="cartCust"></div><button id="cartBack">お客さま<br>変更</button></div>
       <div class="card" id="favCard"><h2>⭐ いつもの品目 <small>タップで追加</small></h2><div class="fav" id="favList"></div></div>
       <div class="card">
@@ -695,7 +695,7 @@ function goView(v, anchor){
   renderAll();
   if(anchor){ setTimeout(()=>$(anchor).scrollIntoView({behavior:'smooth'}),50); } else window.scrollTo(0,0);
 }
-$$('nav button').forEach(b => b.onclick = () => { if(b.dataset.v==='sell' && S.view==='sell' && S.cart){ $('#cartBack').click(); return; } goView(b.dataset.v); });
+$$('nav button').forEach(b => b.onclick = () => { if(b.dataset.v==='sell' && S.view==='sell' && S.cart){ leaveCart(); return; } goView(b.dataset.v); });
 const emptyHTML = (e,t) => `<div class="empty"><span class="e">${e}</span>${t}</div>`;
 function syncDateMonth(d){ if(d && d.slice(0,7) !== S.month){ S.month = d.slice(0,7); load(); } }
 
@@ -973,6 +973,7 @@ function openOrderSheet(kind, id){
       {label:'🗑 削除', cls:'red', fn:()=>guardClosed(rows[0].date, () => confirmSheet(`${esc(san(o.customerName))}の販売を削除しますか？`, `${rows.length}品・${yen(o.total)}`, () => { commit(rows.map(l=>del('sales', l.id))); toast('削除しました'); }))} ]
     : [ ...(dn?[]:[{label:'🚚 配達する', cls:'pri', fn:()=>{ if(S.view!=='sell'){ S.sellMode='deliver'; $('#sDate').value=rows[0].date; goView('sell'); } startDeliver(id); }}]),
       ...(dn?[]:[{label:'✏️ 編集', cls:dn?'pri':'sub', fn:()=>{ if(S.view!=='sell') goView('sell'); startEditOrder(id); }}]),
+      ...(dn?[]:[{label:'📅 配達日を変える', fn:()=>pickDate(rows[0].date, '配達日を変える', v => { commit(rows.map(r=>up('orders', r.id, {...r, date:v, dow:dowOf(v)}))); toast(`配達日を ${md(v)} にしました`); })}]),
       ...tels,
       {label:'🗑 削除', cls:'red', fn:()=>confirmSheet(`${esc(san(o.customerName))}の注文を削除しますか？`, `${rows.length}品・${yen(o.total)}`, () => { commit(rows.map(l=>del('orders', l.id))); toast('削除しました'); })} ];
   actionSheet(`${isSale?'🏠':'📝'} ${esc(san(o.customerName))}`, body, acts);
@@ -1065,8 +1066,29 @@ function startEditOrder(orderId){
   S.cart = {customerId:rows[0].customerId, kind:'order', editing:orderId, editIds:rows.map(r=>r.id), lines:linesFromRows(rows), pay:'現金', note:rows[0].note||''};
   resetCartUI(); $('#cartNote').value = S.cart.note;
 }
-$('#cartBack2').onclick = () => $('#cartBack').click();
-$('#cartBack').onclick = () => {
+$('#cartBack2').onclick = () => leaveCart();
+$('#cartBack').onclick = () => pickCustomerFor(id => { S.cart.customerId = id; renderSell(); toast(`お客さまを ${esc(san(S.customers[id].name))} に変えました`); });
+/* お客さまだけ変える（入れた品目はそのまま） */
+function pickCustomerFor(done, q=''){
+  const list = custArr().filter(c => !q || (String(c.name)+(c.area||'')+telsOf(c).join(' ')).includes(q)).sort((a,b)=>byTown(a.area,b.area) || String(a.name).localeCompare(String(b.name),'ja'));
+  openSheet(`<h3>お客さまを変える</h3><div class="hint" style="margin-top:-4px">入れた品目と数はそのまま残ります。</div>
+    <input class="search" id="pcQ" placeholder="🔍 名前・地域で探す" value="${esc(q)}">
+    <div style="max-height:52vh;overflow:auto">${list.length ? grouped(list, c=>c.area, c=>`<button class="cbtn ${S.cart&&S.cart.customerId===c.id?'done':''}" data-pc="${esc(c.id)}"><div class="n">${esc(c.name)}</div><div class="s">${esc(townOf(c.area)||c.area||'')}</div></button>`, 'cgrid') : '<div class="hint">見つかりませんでした</div>'}</div>
+    <div class="acts"><button class="btn gray" data-close>やめる</button></div>`);
+  $$('#sheet [data-pc]').forEach(b => b.onclick = () => { closeSheet(); done(b.dataset.pc); });
+  $('#pcQ').oninput = e => { const v = e.target.value; clearTimeout(pickCustomerFor._t); pickCustomerFor._t = setTimeout(() => { pickCustomerFor(done, v); const el = $('#pcQ'); el.focus(); el.setSelectionRange(v.length, v.length); }, 350); };
+}
+/* 日付を変える（入れた品目はそのまま） */
+function pickDate(cur, title, done){
+  openSheet(`<h3>${title}</h3><input type="date" id="pdD" value="${esc(cur)}" style="margin-top:6px">
+    <div class="chips" style="margin-top:10px">${[0,1,2,3].map(n=>`<button class="chip ${addDays(todayStr(),n)===cur?'on':''}" data-pdn="${n}">${['今日','明日','あさって','しあさって'][n]}（${md(addDays(todayStr(),n))}）</button>`).join('')}</div>
+    <div class="acts"><button class="btn gray" data-close style="flex:.7">やめる</button><button class="btn pri big" id="pdOk">この日にする</button></div>`);
+  $$('#sheet [data-pdn]').forEach(b => b.onclick = () => { $('#pdD').value = addDays(todayStr(), +b.dataset.pdn); $$('#sheet [data-pdn]').forEach(x=>x.classList.toggle('on', x===b)); });
+  $('#pdOk').onclick = () => { const v = $('#pdD').value; if(!v) return toast('日付を選んでください'); closeSheet(); done(v); };
+}
+$('#cartDate').onclick = () => { const cur = $('#sDate').value || todayStr();
+  pickDate(cur, S.cart && S.cart.kind==='order' ? '配達日を変える' : '販売日を変える', v => { $('#sDate').value = v; renderSell(); toast(`日付を ${md(v)} にしました`); }); };
+function leaveCart(){
   if(S.cart && S.cart.lines.length){ confirmSheet('入力中の内容を消して戻りますか？','入れた品目は消えます。', ()=>{ S.cart=null; renderAll(); }, '消して戻る'); }
   else { S.cart=null; renderAll(); }
 };
@@ -1091,6 +1113,7 @@ function renderCart(){
   const kind = S.cart.kind, d0 = $('#sDate').value || todayStr();
   $('#cartCust').innerHTML = `${kind==='order'?'📝 注文：':S.cart.fromOrder?'📦 配達：':''}${esc(san(c.name))}<small>${esc(c.area||'')} ・ ${kind==='order'?'配達日 ':''}${md(d0)}${telsOf(c).length?' ・ '+telsOf(c).map(telLink).join(' '):''}</small>`;
   $('#payCard').classList.toggle('hidden', kind==='order');
+  $('#cartDate').textContent = `📅 ${kind==='order'?'配達日':'日付'} ${md(d0)} を変える`;
   const favs = favoritesFor(c.id), inCart = new Set(S.cart.lines.map(l=>l.itemId));
   $('#favCard').classList.toggle('hidden', !favs.length);
   $('#favList').innerHTML = favs.map(f => { const it=S.items[f.itemId], L=f.last; return `<button class="favbtn ${inCart.has(f.itemId)?'in':''}" data-fav="${esc(f.itemId)}"><div class="n">${icon(it)} ${esc(it.name)}</div><div class="s">前回 ${fmtQ(L.qty)}${esc(L.unit||it.unit||'')}・${yen(L.unitPrice)}${L.mode&&L.mode!=='いつも'?'（'+esc(L.mode)+'）':''} ・ ${f.n}回</div></button>`; }).join('');
