@@ -809,9 +809,20 @@ async function drawRouteMap(sel){
   if(all.length > 1) map.fitBounds(all, {padding:[24,24]}); else map.setView(goal, 14);
   $('#rtMapNote').innerHTML = `番号＝まわる順（🔵牧之原市・🟢吉田町・🏁ゴール）。点線はまわる順の目安で、実際の道とはちがいます。${miss.length?`<br><span style="color:var(--orange)">地図に出せなかった：${miss.map(esc).join('、')}（住所を確認してください）</span>`:''}`;
 }
+/* 検索：ひらがな・カタカナを区別せず、日本語入力の変換中は画面を書き換えない */
+const kana = t => String(t||'').replace(/[ァ-ヶ]/g, ch => String.fromCharCode(ch.charCodeAt(0)-0x60)).replace(/\s|　/g,'').toLowerCase();
+const custMatch = (c, q) => !q || kana(String(c.name)+(c.area||'')+telsOf(c).join('')+(c.note||'')).includes(kana(q));
+function bindSearch(el, fn, wait=250){
+  let comp = false, t;
+  el.addEventListener('compositionstart', () => { comp = true; });
+  el.addEventListener('compositionend', () => { comp = false; clearTimeout(t); fn(el.value); });
+  el.addEventListener('input', () => { if(comp) return; clearTimeout(t); t = setTimeout(() => fn(el.value), wait); });
+}
 function paintRoute(d, q){
   const sel = route.map(id=>S.customers[id]).filter(Boolean);
-  const others = custArr().filter(c => !route.includes(c.id) && (!q || (String(c.name)+(c.area||'')).includes(q))).sort((a,b)=>String(a.area||'').localeCompare(String(b.area||''),'ja'));
+  q = q || '';
+  const othersHTML = qq => { const others = custArr().filter(c => !route.includes(c.id) && custMatch(c, qq)).sort((a,b)=>String(a.area||'').localeCompare(String(b.area||''),'ja'));
+    return others.length ? grouped(others.slice(0,60), c=>c.area, c=>`<div class="li" data-radd="${esc(c.id)}" style="cursor:pointer"><div class="ic">＋</div><div class="m"><div class="t">${esc(c.name)}</div><div class="sub">${esc(c.area||'住所未登録')}</div></div></div>`, 'list') : '<div class="hint">見つかりませんでした</div>'; };
   const noAd = sel.filter(c=>!fullAddr(c.area));
   openSheet(`<h3>🗺 配達ルート <small style="font-weight:400;color:var(--mute)">${dayLabel(d)}</small></h3>
     <div class="hint" style="margin-top:0">📍 出発：現在地 → 上から順にまわる → 🏁 ゴール：吉田町住吉2983-1</div>
@@ -821,7 +832,7 @@ function paintRoute(d, q){
     <div id="rtLinks"></div>
     <h4 style="margin:16px 0 4px">＋ ほかのお客さまを足す</h4>
     <input class="search" id="rtQ" placeholder="🔍 名前・地域で探す" value="${esc(q)}">
-    <div>${grouped(others.slice(0,60), c=>c.area, c=>`<div class="li" data-radd="${esc(c.id)}" style="cursor:pointer"><div class="ic">＋</div><div class="m"><div class="t">${esc(c.name)}</div><div class="sub">${esc(c.area||'住所未登録')}</div></div></div>`, 'list')}</div>`);
+    <div id="rtOthers">${othersHTML(q)}</div>`);
   const sh = $('#sheet');
   sh.onclick = e => {
     const up_ = e.target.closest('[data-rup]'), dn = e.target.closest('[data-rdn]'), rm = e.target.closest('[data-rrm]'), ad = e.target.closest('[data-radd]');
@@ -831,7 +842,7 @@ function paintRoute(d, q){
     else if(rm){ route = route.filter(x=>x!==rm.dataset.rrm); paintRoute(d, qq); }
     else if(ad){ route.push(ad.dataset.radd); paintRoute(d, qq); }
   };
-  $('#rtQ').oninput = e => { const v = e.target.value; clearTimeout(paintRoute._t); paintRoute._t = setTimeout(()=>{ paintRoute(d, v); const el=$('#rtQ'); el.focus(); el.setSelectionRange(v.length,v.length); }, 400); };
+  bindSearch($('#rtQ'), v => { $('#rtOthers').innerHTML = othersHTML(v); });
   drawRouteMap(sel);
   $('#rtGo').onclick = () => {
     const stops = sel.map(c=>fullAddr(c.area)).filter(Boolean), links = [];
@@ -990,7 +1001,7 @@ function renderPick(){
   $('#pickTitle').textContent = order ? '📝 どのお客さまの注文？' : '🚚 注文なしの販売（飛び込み・追加）';
   $('#pickHint').textContent = order ? 'よく注文があるお客さまほど上に出ます。✓ はこの日の注文が入っているお客さまです。' : '注文にないお客さまや、追加の販売はここから。✓ はこの日に登録済みのお客さまです。';
   const freq = custFrequency(), done = new Set(onDate(order?'orders':'sales', d).map(r=>r.customerId));
-  const list = custArr().filter(c => !q || (String(c.name)+(c.area||'')+telsOf(c).join(' ')+(c.note||'')).includes(q))
+  const list = custArr().filter(c => custMatch(c, q))
     .sort((a,b)=>(freq[b.id]||0)-(freq[a.id]||0) || String(a.name).localeCompare(String(b.name),'ja'));
   $('#cGrid').innerHTML = `<button class="cbtn new" id="pickNew" style="width:100%;min-height:50px;margin-bottom:4px">＋ 新しいお客さま</button>` + (list.length ? grouped(list, c=>c.area, c => `<button class="cbtn ${done.has(c.id)?'done':''}" data-pick="${esc(c.id)}"><div class="n">${esc(c.name)}</div><div class="s">${esc(townOf(c.area)||c.area||'')}${freq[c.id]?` ・ 90日で${freq[c.id]}回`:''}</div></button>`, 'cgrid') : '<div class="hint">見つかりませんでした</div>');
   $('#listTitle').innerHTML = `${order?'📋 この日の注文':'📋 この日の販売'} <small>${md(d)}${w?'・'+w:''}</small>`;
@@ -1069,14 +1080,15 @@ function startEditOrder(orderId){
 $('#cartBack2').onclick = () => leaveCart();
 $('#cartBack').onclick = () => pickCustomerFor(id => { S.cart.customerId = id; renderSell(); toast(`お客さまを ${esc(san(S.customers[id].name))} に変えました`); });
 /* お客さまだけ変える（入れた品目はそのまま） */
-function pickCustomerFor(done, q=''){
-  const list = custArr().filter(c => !q || (String(c.name)+(c.area||'')+telsOf(c).join(' ')).includes(q)).sort((a,b)=>byTown(a.area,b.area) || String(a.name).localeCompare(String(b.name),'ja'));
+function pickCustomerFor(done){
+  const listHTML = q => { const list = custArr().filter(c => custMatch(c, q)).sort((a,b)=>byTown(a.area,b.area) || String(a.name).localeCompare(String(b.name),'ja'));
+    return list.length ? grouped(list, c=>c.area, c=>`<button class="cbtn ${S.cart&&S.cart.customerId===c.id?'done':''}" data-pc="${esc(c.id)}"><div class="n">${esc(c.name)}</div><div class="s">${esc(townOf(c.area)||c.area||'')}</div></button>`, 'cgrid') : '<div class="hint">見つかりませんでした。漢字のお名前は、変換してから探してください。</div>'; };
   openSheet(`<h3>お客さまを変える</h3><div class="hint" style="margin-top:-4px">入れた品目と数はそのまま残ります。</div>
-    <input class="search" id="pcQ" placeholder="🔍 名前・地域で探す" value="${esc(q)}">
-    <div style="max-height:52vh;overflow:auto">${list.length ? grouped(list, c=>c.area, c=>`<button class="cbtn ${S.cart&&S.cart.customerId===c.id?'done':''}" data-pc="${esc(c.id)}"><div class="n">${esc(c.name)}</div><div class="s">${esc(townOf(c.area)||c.area||'')}</div></button>`, 'cgrid') : '<div class="hint">見つかりませんでした</div>'}</div>
+    <input class="search" id="pcQ" placeholder="🔍 名前・地域で探す" autocomplete="off">
+    <div id="pcList" style="max-height:52vh;overflow:auto">${listHTML('')}</div>
     <div class="acts"><button class="btn gray" data-close>やめる</button></div>`);
-  $$('#sheet [data-pc]').forEach(b => b.onclick = () => { closeSheet(); done(b.dataset.pc); });
-  $('#pcQ').oninput = e => { const v = e.target.value; clearTimeout(pickCustomerFor._t); pickCustomerFor._t = setTimeout(() => { pickCustomerFor(done, v); const el = $('#pcQ'); el.focus(); el.setSelectionRange(v.length, v.length); }, 350); };
+  $('#pcList').onclick = e => { const b = e.target.closest('[data-pc]'); if(!b) return; closeSheet(); done(b.dataset.pc); };
+  bindSearch($('#pcQ'), v => { $('#pcList').innerHTML = listHTML(v); });
 }
 /* 日付を変える（入れた品目はそのまま） */
 function pickDate(cur, title, done){
@@ -1627,7 +1639,7 @@ function renderRecon(){
    ========================================================= */
 function renderCust(){
   const q = $('#cSearch').value.trim(), all = custArr();
-  const list = all.filter(c => !q || (String(c.name)+(c.area||'')+telsOf(c).join(' ')+(c.note||'')).includes(q));
+  const list = all.filter(c => custMatch(c, q));
   $('#cCount').textContent = `${all.length}軒`;
   const ms = {}; inMonth('sales').forEach(r => ms[r.customerId] = (ms[r.customerId]||0) + num(r.total));
   const unpaid = {}; arr('sales').filter(isCredit).forEach(r => unpaid[r.customerId] = (unpaid[r.customerId]||0) + num(r.total));
