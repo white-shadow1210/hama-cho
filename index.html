@@ -294,7 +294,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
         <div id="cGrid"></div>
         <div class="hint" id="pickHint"></div>
       </div>
-      <div class="card"><h2 id="listTitle">📋 この日の販売</h2><div class="list" id="orderList"></div></div>
+      <div class="card" id="listCard"><h2 id="listTitle">📋 この日の販売</h2><div class="list" id="orderList"></div></div>
     </div>
     <div id="sellCart" class="hidden">
       <div style="display:flex;gap:8px;margin:0 0 10px"><button class="btn sub" id="cartBack2" style="width:auto;margin:0;padding:10px 16px;font-size:15px">‹ 戻る</button><button class="btn sub" id="cartDate" style="width:auto;margin:0;padding:10px 16px;font-size:15px;margin-left:auto">📅 日付</button></div>
@@ -1004,7 +1004,9 @@ function renderPick(){
   const list = custArr().filter(c => custMatch(c, q))
     .sort((a,b)=>(freq[b.id]||0)-(freq[a.id]||0) || String(a.name).localeCompare(String(b.name),'ja'));
   $('#cGrid').innerHTML = `<button class="cbtn new" id="pickNew" style="width:100%;min-height:50px;margin-bottom:4px">＋ 新しいお客さま</button>` + (list.length ? grouped(list, c=>c.area, c => `<button class="cbtn ${done.has(c.id)?'done':''}" data-pick="${esc(c.id)}"><div class="n">${esc(c.name)}</div><div class="s">${esc(townOf(c.area)||c.area||'')}${freq[c.id]?` ・ 90日で${freq[c.id]}回`:''}</div></button>`, 'cgrid') : '<div class="hint">見つかりませんでした</div>');
-  $('#listTitle').innerHTML = `${order?'📋 この日の注文':'📋 この日の販売'} <small>${md(d)}${w?'・'+w:''}</small>`;
+  { const lc = $('#listCard'), pc = $('#pickTitle').closest('.card'); if(order){ if(lc.nextElementSibling!==pc) pc.before(lc); } else if(pc.nextElementSibling!==lc) pc.after(lc); }
+  const dayRows = ordersOf(onDate(order?'orders':'sales', d));
+  $('#listTitle').innerHTML = `${order?'📋 この日の注文':'📋 この日の販売'} <small>${md(d)}${w?'・'+w:''}${dayRows.length?` ・ ${dayRows.length}軒 <b style="color:var(--navy2)">${yen(sum(dayRows))}</b>`:''}</small>`;
   if(order){
     const os = ordersOf(onDate('orders', d));
     $('#orderList').innerHTML = os.length ? orderTiles(os, 'order')
