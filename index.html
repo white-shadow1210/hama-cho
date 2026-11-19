@@ -288,12 +288,13 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
         <div class="chips hidden" id="orderChips" style="margin-top:8px"><button class="chip sm" data-dd="0">今日</button><button class="chip sm" data-dd="1">明日</button><button class="chip sm" data-dd="2">あさって</button></div>
       </div>
       <div class="card" id="dueCard"><h2>📦 配達する注文 <small id="dueSum"></small></h2><button class="btn sub" data-route="1" style="margin:0 0 8px">🗺 配達ルートをつくる</button><div id="dueList"></div></div>
-      <div class="card">
+      <div class="card" id="pickCard">
         <h2 id="pickTitle">🚚 どのお客さま？</h2>
-        <input class="search" id="cPickSearch" placeholder="🔍 名前・地域で探す">
-        <div id="cGrid"></div>
-        <div class="hint" id="pickHint"></div>
+        <input class="search" id="cPickSearch" placeholder="🔍 名前・地域で探す" autocomplete="off">
+        <button class="cbtn new" id="pickNew" style="width:100%;min-height:50px;margin-bottom:4px">＋ 新しいお客さま</button>
+        <div id="cGridBox"><div id="cGrid"></div><div class="hint" id="pickHint"></div></div>
       </div>
+      <div class="card hidden" id="gridCard"></div>
       <div class="card" id="listCard"><h2 id="listTitle">📋 この日の販売</h2><div class="list" id="orderList"></div></div>
     </div>
     <div id="sellCart" class="hidden">
@@ -942,7 +943,8 @@ async function copyText(txt, title){
 $('#sDate').value = todayStr();
 const dayWord = d => { const n = Math.round((parseD(d) - parseD(todayStr()))/86400000); return n===0?'今日':n===1?'明日':n===2?'あさって':n===-1?'昨日':''; };
 $('#sDate').onchange = () => { if(S.sellMode!=='order') syncDateMonth($('#sDate').value); renderAll(); };
-$('#cPickSearch').oninput = () => renderPick();
+bindSearch($('#cPickSearch'), () => renderPick());
+$('#pickNew').onclick = () => openCustomer(null, id => startCart(id));
 $('#sellTabs').onclick = e => { const b = e.target.closest('[data-sm]'); if(!b) return; S.sellMode = b.dataset.sm; $('#sDate').value = S.sellMode==='order' ? addDays(todayStr(),1) : todayStr(); renderAll(); };
 $('#orderChips').onclick = e => { const b = e.target.closest('[data-dd]'); if(!b) return; $('#sDate').value = addDays(todayStr(), Number(b.dataset.dd)); renderAll(); };
 function renderSell(){
@@ -1003,8 +1005,10 @@ function renderPick(){
   const freq = custFrequency(), done = new Set(onDate(order?'orders':'sales', d).map(r=>r.customerId));
   const list = custArr().filter(c => custMatch(c, q))
     .sort((a,b)=>(freq[b.id]||0)-(freq[a.id]||0) || String(a.name).localeCompare(String(b.name),'ja'));
-  $('#cGrid').innerHTML = `<button class="cbtn new" id="pickNew" style="width:100%;min-height:50px;margin-bottom:4px">＋ 新しいお客さま</button>` + (list.length ? grouped(list, c=>c.area, c => `<button class="cbtn ${done.has(c.id)?'done':''}" data-pick="${esc(c.id)}"><div class="n">${esc(c.name)}</div><div class="s">${esc(townOf(c.area)||c.area||'')}${freq[c.id]?` ・ 90日で${freq[c.id]}回`:''}</div></button>`, 'cgrid') : '<div class="hint">見つかりませんでした</div>');
-  { const lc = $('#listCard'), pc = $('#pickTitle').closest('.card'); if(order){ if(lc.nextElementSibling!==pc) pc.before(lc); } else if(pc.nextElementSibling!==lc) pc.after(lc); }
+  $('#cGrid').innerHTML = (list.length ? grouped(list, c=>c.area, c => `<button class="cbtn ${done.has(c.id)?'done':''}" data-pick="${esc(c.id)}"><div class="n">${esc(c.name)}</div><div class="s">${esc(townOf(c.area)||c.area||'')}${freq[c.id]?` ・ 90日で${freq[c.id]}回`:''}</div></button>`, 'cgrid') : '<div class="hint">見つかりませんでした</div>');
+  { const lc = $('#listCard'), pc = $('#pickCard'), gc = $('#gridCard'), gb = $('#cGridBox');
+    if(order){ pc.after(lc); lc.after(gc); gc.appendChild(gb); gc.classList.remove('hidden'); lc.classList.toggle('hidden', !!q); }
+    else { pc.appendChild(gb); pc.after(lc); lc.after(gc); gc.classList.add('hidden'); lc.classList.remove('hidden'); } }
   const dayRows = ordersOf(onDate(order?'orders':'sales', d));
   $('#listTitle').innerHTML = `${order?'📋 この日の注文':'📋 この日の販売'} <small>${md(d)}${w?'・'+w:''}${dayRows.length?` ・ ${dayRows.length}軒 <b style="color:var(--navy2)">${yen(sum(dayRows))}</b>`:''}</small>`;
   if(order){
