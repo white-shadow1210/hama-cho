@@ -1554,6 +1554,23 @@ $('#stList').onclick = e => {
     ...(x.qty>0?[{label:'🚚 在庫から売る', cls:'pri', fn:()=>sellFromStock(id)}]:[]),
     {label:'🔢 数える（今ある数を入れる）', fn:()=>openCount(id)}]);
 };
+/* お客さまの最近の購入（日ごと） */
+function custHistory(cid, n){
+  const c = S.customers[cid]; if(!c) return;
+  const byDay = {}; arr('sales').filter(r=>r.customerId===cid).forEach(r => (byDay[r.date] = byDay[r.date] || []).push(r));
+  const days = Object.keys(byDay).sort().reverse(), show = days.slice(0, n);
+  const cnt = {}; arr('sales').filter(r=>r.customerId===cid).forEach(r => { const x = cnt[r.itemName] = cnt[r.itemName] || {n:0, q:0, u:r.unit||''}; x.n++; x.q += num(r.qty); });
+  const fav = Object.entries(cnt).sort((a,b)=>b[1].n-a[1].n).slice(0,5);
+  openSheet(`<h3>🧾 ${esc(c.name)} の最近の購入</h3>
+    ${fav.length?`<div class="hint" style="margin:0 0 6px">よく買う品目：${fav.map(([k,x])=>`${esc(k)}（${x.n}回）`).join('、')}</div>`:''}
+    ${show.length ? show.map(d => { const rows = byDay[d]; return `<details class="cl" ${d===show[0]?'open':''}><summary><span class="cn">${dayLabel(d)}<small style="font-weight:400;color:var(--mute);margin-left:6px">${rows.length}品</small></span><span class="ca">${yen(sum(rows))}</span></summary><div class="cb">${rows.map(l=>`<div class="conf-line"><div>${icon(S.items[l.itemId])} ${esc(l.itemName)}<div class="q">${fmtQ(l.qty)}${esc(l.unit||'')} × ${yen(l.unitPrice)}${l.mode&&l.mode!=='いつも'?` <span class="tag o">${esc(l.mode)}</span>`:''}</div></div><div class="p">${yen(l.total)}</div></div>`).join('')}${rows[0].note?`<div class="hint">📝 ${esc(rows[0].note)}</div>`:''}</div></details>`; }).join('')
+      + `<div class="li" style="border-top:2px solid var(--line)"><div class="m"><div class="t">${show.length}回の合計</div></div><div class="a" style="color:var(--navy2)">${yen(show.reduce((t,d)=>t+sum(byDay[d]),0))}</div></div>`
+      : emptyHTML('🧾','まだ購入の記録がありません')}
+    <div class="acts-v">${days.length>n?`<button class="btn sub" id="chMore">さらに前の5回を見る</button>`:''}<button class="btn gray" id="chBack">← お客さま情報にもどる</button></div>
+    <div class="hint">日付をタップすると、その日の内訳が開きます。表示できるのは直近およそ4か月分です。</div>`);
+  if($('#chMore')) $('#chMore').onclick = () => custHistory(cid, n+5);
+  $('#chBack').onclick = () => { closeSheet(); setTimeout(()=>{ const t = document.querySelector(`#cList [data-cust="${cid}"]`); if(t) t.click(); }, 200); };
+}
 function sellFromStock(stId){
   const s2 = {dataset:{stsell:stId}};
   S.pendingAdd = s2.dataset.stsell; S.sellMode='deliver'; S.cart=null; $('#sDate').value=todayStr(); goView('sell');
@@ -1704,6 +1721,7 @@ $('#cAdd').onclick = () => openCustomer(null);
 $('#cList').onclick = e => { const li = e.target.closest('[data-cust]'); if(!li) return; const c = S.customers[li.dataset.cust]; if(!c) return;
   const ms = sum(inMonth('sales').filter(r=>r.customerId===c.id)), un = sum(arr('sales').filter(r=>isCredit(r) && r.customerId===c.id));
   actionSheet(`🏠 ${esc(c.name)}`, dl([['地域', esc(c.area||'')], ['メモ', esc(c.note||'')], ['今月の売上', ms?yen(ms):''], ['未入金', un?`<span style="color:var(--red)">${yen(un)}</span>`:''], ['取引開始', c.since?esc(String(c.since).replace(/-/g,'/')):'']]), [
+    {label:'🧾 最近の購入（直近5回）', fn:()=>custHistory(c.id, 5)},
     ...telsOf(c).map(t=>({label:`📞 ${esc(t)} に電話する`, href:telHref(t), cls:'sub'})),
     {label:'✏️ 編集', cls:'pri', fn:()=>openCustomer(c.id)},
     {label:'🗑 削除', cls:'red', fn:()=>confirmSheet(`「${esc(c.name)}」を削除しますか？`, 'これまでの販売記録は残ります。', () => { commit([del('customers', c.id)]); toast('削除しました'); })}]);
