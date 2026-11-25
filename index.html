@@ -44,6 +44,20 @@ details.cl .cb{padding:2px 2px 12px}
 .grp{font-weight:700;color:var(--navy);font-size:14px;margin:16px 0 8px;display:flex;gap:6px;align-items:center;border-bottom:1.5px solid var(--line);padding-bottom:4px}
 .grp small{font-weight:400;color:var(--mute)}
 .grp:first-child{margin-top:2px}
+.datebtn{flex:1;background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:12px;font-size:17px;font-weight:700;color:var(--ink);text-align:center;cursor:pointer}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:8px}
+.cal .dw{text-align:center;font-size:12px;color:var(--mute);padding:4px 0}
+.cal .dw.sun,.cal .d.sun .n{color:#c0392b}.cal .dw.sat,.cal .d.sat .n{color:#2a62b8}
+.cal .d{border:none;background:transparent;border-radius:12px;min-height:58px;padding:4px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;font-family:inherit}
+.cal .d .n{font-size:16px;font-weight:700;color:var(--ink)}
+.cal .d .o{font-size:10px;font-weight:700;color:#fff;background:var(--orange);border-radius:99px;padding:1px 6px;line-height:1.5}
+.cal .d .o.done{background:#9bb7a6}
+.cal .d.has{background:#fff1df}
+.cal .d.today{box-shadow:inset 0 0 0 2px var(--sea)}
+.cal .d.sel{background:var(--navy)}.cal .d.sel .n{color:#fff}
+.cal .d.past .n{opacity:.45}
+.calhead{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+.calhead b{font-size:17px;color:var(--navy)}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .tile{position:relative;background:var(--beige);border:1.5px solid var(--line);border-radius:16px;padding:12px;cursor:pointer;display:flex;flex-direction:column;gap:4px;min-height:118px;transition:transform .08s}
 .tile:active{transform:scale(.97)}
@@ -284,7 +298,7 @@ textarea.csv{font-size:12px;font-family:ui-monospace,monospace;height:180px}
     <div id="sellPick">
       <div class="seg" id="sellTabs"><button data-sm="deliver" class="on">🚚 配達・販売</button><button data-sm="order">📝 注文を受ける</button></div>
       <div class="card" id="dateCard">
-        <div class="datebar" style="margin:0"><span id="dateLabel" style="font-size:13px;color:var(--mute)">日付</span><input type="date" id="sDate"></div>
+        <div class="datebar" style="margin:0"><span id="dateLabel" style="font-size:13px;color:var(--mute)">日付</span><input type="hidden" id="sDate"><button class="datebtn" id="sDateBtn"></button></div>
         <div class="chips hidden" id="orderChips" style="margin-top:8px"><button class="chip sm" data-dd="0">今日</button><button class="chip sm" data-dd="1">明日</button><button class="chip sm" data-dd="2">あさって</button></div>
       </div>
       <div class="card" id="dueCard"><h2>📦 配達する注文 <small id="dueSum"></small></h2><button class="btn sub" data-route="1" style="margin:0 0 8px">🗺 配達ルートをつくる</button><div id="dueList"></div></div>
@@ -995,6 +1009,7 @@ document.addEventListener('click', e => { const t = e.target.closest('[data-ot]'
 
 function renderPick(){
   const order = S.sellMode==='order';
+  paintDateBtn();
   const d = $('#sDate').value || todayStr(), q = $('#cPickSearch').value.trim(), w = dayWord(d);
   $$('#sellTabs button').forEach(b => b.classList.toggle('on', b.dataset.sm===S.sellMode));
   $('#orderChips').classList.toggle('hidden', !order); $('#dueCard').classList.toggle('hidden', order);
@@ -1097,13 +1112,43 @@ function pickCustomerFor(done){
   bindSearch($('#pcQ'), v => { $('#pcList').innerHTML = listHTML(v); });
 }
 /* 日付を変える（入れた品目はそのまま） */
-function pickDate(cur, title, done){
-  openSheet(`<h3>${title}</h3><input type="date" id="pdD" value="${esc(cur)}" style="margin-top:6px">
-    <div class="chips" style="margin-top:10px">${[0,1,2,3].map(n=>`<button class="chip ${addDays(todayStr(),n)===cur?'on':''}" data-pdn="${n}">${['今日','明日','あさって','しあさって'][n]}（${md(addDays(todayStr(),n))}）</button>`).join('')}</div>
-    <div class="acts"><button class="btn gray" data-close style="flex:.7">やめる</button><button class="btn pri big" id="pdOk">この日にする</button></div>`);
-  $$('#sheet [data-pdn]').forEach(b => b.onclick = () => { $('#pdD').value = addDays(todayStr(), +b.dataset.pdn); $$('#sheet [data-pdn]').forEach(x=>x.classList.toggle('on', x===b)); });
-  $('#pdOk').onclick = () => { const v = $('#pdD').value; if(!v) return toast('日付を選んでください'); closeSheet(); done(v); };
+/* 注文のある日に色がつくカレンダー */
+function orderDays(){
+  const g = {};
+  ordersOf(arr('orders')).forEach(o => { const d = String(o.lines[0].date); const x = g[d] = g[d] || {n:0, done:0, total:0}; if(o.lines[0].status==='配達済') x.done++; else x.n++; x.total += o.total; });
+  return g;
 }
+function pickDate(cur, title, done){
+  cur = cur || todayStr();
+  let ym = cur.slice(0,7);
+  const od = orderDays(), T = todayStr();
+  const paint = () => {
+    const [y,m] = ym.split('-').map(Number), first = new Date(y, m-1, 1), days = new Date(y, m, 0).getDate(), lead = first.getDay();
+    const cells = [];
+    for(let i=0;i<lead;i++) cells.push('<div></div>');
+    for(let dd=1; dd<=days; dd++){
+      const ds = `${ym}-${String(dd).padStart(2,'0')}`, x = od[ds], w = (lead+dd-1)%7;
+      cells.push(`<button class="d ${x&&x.n?'has':''} ${ds===T?'today':''} ${ds===cur?'sel':''} ${ds<T?'past':''} ${w===0?'sun':w===6?'sat':''}" data-cd="${ds}"><span class="n">${dd}</span>${x&&x.n?`<span class="o">${x.n}件</span>`:''}${x&&!x.n&&x.done?`<span class="o done">済${x.done}</span>`:''}</button>`);
+    }
+    const mo = Object.entries(od).filter(([d])=>d.startsWith(ym)).reduce((t,[,x])=>({n:t.n+x.n, total:t.total+x.total}), {n:0,total:0});
+    $('#calBox').innerHTML = `<div class="calhead"><button class="btn sub" data-cm="-1" style="width:auto;margin:0;padding:8px 14px">‹</button><b>${y}年${m}月</b><button class="btn sub" data-cm="1" style="width:auto;margin:0;padding:8px 14px">›</button></div>
+      <div class="cal">${['日','月','火','水','木','金','土'].map((t,i)=>`<div class="dw ${i===0?'sun':i===6?'sat':''}">${t}</div>`).join('')}${cells.join('')}</div>
+      <div class="hint" style="margin-top:8px"><span style="background:var(--orange);color:#fff;border-radius:99px;padding:1px 7px;font-size:11px;font-weight:700">2件</span> 未配達の注文がある日 ／ 枠＝今日${mo.n?` ・ この月の未配達 ${mo.n}件`:''}</div>`;
+  };
+  openSheet(`<h3>${title}</h3>
+    <div class="chips" style="margin-top:4px">${[0,1,2].map(n=>`<button class="chip ${addDays(T,n)===cur?'on':''}" data-pdn="${n}">${['今日','明日','あさって'][n]}（${md(addDays(T,n))}）</button>`).join('')}</div>
+    <div id="calBox"></div>
+    <div class="acts"><button class="btn gray" data-close>やめる</button></div>`);
+  paint();
+  $('#sheet').onclick = e => {
+    const cm = e.target.closest('[data-cm]'); if(cm){ const [y,m] = ym.split('-').map(Number), d0 = new Date(y, m-1+Number(cm.dataset.cm), 1); ym = `${d0.getFullYear()}-${String(d0.getMonth()+1).padStart(2,'0')}`; paint(); return; }
+    const cd = e.target.closest('[data-cd]'), pn = e.target.closest('[data-pdn]');
+    const v = cd ? cd.dataset.cd : pn ? addDays(T, +pn.dataset.pdn) : null;
+    if(v){ closeSheet(); done(v); }
+  };
+}
+function paintDateBtn(){ const d = $('#sDate').value || todayStr(), w = dayWord(d), x = orderDays()[d]; $('#sDateBtn').innerHTML = `📅 ${md(d)}${w?'・'+w:''}${x&&x.n?` <span class="tag o" style="margin:0 0 0 6px">注文${x.n}件</span>`:''}`; }
+$('#sDateBtn').onclick = () => pickDate($('#sDate').value || todayStr(), S.sellMode==='order' ? '配達する日をえらぶ' : '日付をえらぶ', v => { $('#sDate').value = v; if(S.sellMode!=='order') syncDateMonth(v); renderAll(); });
 $('#cartDate').onclick = () => { const cur = $('#sDate').value || todayStr();
   pickDate(cur, S.cart && S.cart.kind==='order' ? '配達日を変える' : '販売日を変える', v => { $('#sDate').value = v; renderSell(); toast(`日付を ${md(v)} にしました`); }); };
 function leaveCart(){
